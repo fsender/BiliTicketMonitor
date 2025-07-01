@@ -41,8 +41,8 @@ const char *welcome =
 "\033[31m建议通过 \"在终端中打开\" 打开本程序, 然后运行时在后面加上 -h 参数看说明!\033[0m\n"
 "参数 \033[35m--id 票务ID\033[0m 来指定票务ID, 默认为102194 (BW2025)\033[0m\n"
 "参数 \033[35m--ticket-no 票种标号\033[0m 来指定想蹲的票 (0代表不蹲票仅查看)\033[0m\n"
-"本程序为 C++ 版, \033[33m性能更强大\033[0m,\n"
-"若要进一步更改票务和票种信息可以 \033[32m删除 config.txt 文件\033[0m 重新配置\n"
+"本程序为 C++ 版, \033[33m性能更强大\033[0m, 免登录, 灵活性强,\n"
+"若要进一步更改票务和票种信息可以 \033[32m可更改 config.txt 文件\033[0m 重新配置\n"
 "运行前使用参数 \033[35m-h\033[0m 来查看更多的帮助信息, 帮助信息很重要的\033[0m\n"
 "项目github页面：\033[36mhttps://github.com/fsender/BiliTicketMonitor\033[0m\n"
 "  \033[34m按 Control-C 退出本程序.\033[0m\n"
@@ -73,6 +73,16 @@ options:
                         随后自动关闭 BHYG 的抢票模式, 重新进入等待模式.
 )";
 const char *version = "BiliTicketMonitor Version " VERSION "\n作者: FriendshipEnder (B站同名)\n项目github页面：https://github.com/fsender/BiliTicketMonitor";
+
+const char *FILE_DATA = R"(
+# 说明: 第一行为B站会员购的票务ID, 即链接 https://show.bilibili.com/platform/detail.html?id=102194 后面的ID数字
+# 第二行为票种No. 具体对应哪个票种 (时间、票档) 需要依照票务ID
+# 第三行为脚本批处理文件路径吗支持 bat, sh 格式的批处理程序. 批处理程序可以调用python等程序, 此处的自定义程度极高
+# 第四行为票务信息 (余票监测) Get API 的调用间隔, 单位ms
+# 第五行不建议修改, 为 Get API 的超时时间, 单位ms
+# 第六行不建议修改, 为 Get API 的请求链接, 用 {0} 来代表抢票ID数据段
+# 第七行不建议修改, 为请求标识符, 就是浏览器请求标识.
+)";
 
 // 配置类
 class Config {
@@ -301,7 +311,8 @@ void Config::writeConf(){
                     << REFRESH_INTERVAL << endl
                     << TIMEOUT << endl
                     << API_BASE << endl
-                    << HEADERS[0] << endl;
+                    << HEADERS[0] << endl
+                    << FILE_DATA << endl;
         newConfig.close();
         cout << "配置已保存到 config.txt" << endl;
     } else {
