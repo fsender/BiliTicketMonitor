@@ -2,12 +2,13 @@
  * @file main.cpp
  * @author FriendshipEnder (https://space.bilibili.com/180327370)
  * @brief B站票务监控器
- * @version 2.0.0
+ * @version 3.0.0
  * @date 2025-07-01
+ * @date 2026-04-28
  * @copyright Copyright (c) 2025
  */
 
-#define VERSION "2.0.0"
+#define VERSION "3.0.0"
 #define INIT_DELAY_SEC 1
 
 #include <iostream>
@@ -26,8 +27,32 @@ using namespace std;
 
 const char *welcome = 
 "\033[36mB站票务监控器：By FriendshipEnder V " VERSION "\033[0m\n"
-"建议通过 \"在终端中打开\" 打开本程序\n"
-"运行前使用参数 \033[35m-h\033[0m 来查看帮助信息\n"
+"\033[32m3.0.0 版本说明：新API, 降低风控风险!! 支持监视多个票种并单独配置自定义命令行抢票功能!!\033[0m\n"
+"····································································\n"
+":\033[31m ____   ____  _      ____  ______  ____   __  __  _    ___ ______ \033[0m:\n"
+":\033[31m|    \\ |    || |    |    ||      ||    | /  ]|  |/ ]  /  _]      |\033[0m:\n"
+":\033[33m|  o  ) |  | | |     |  | |      | |  | /  / |  ' /  /  [_|      |\033[0m:\n"
+":\033[32m|     | |  | | |___  |  | |_|  |_| |  |/  /  |    \\ |    _]_|  |_|\033[0m:\n"
+":\033[36m|  O  | |  | |     | |  |   |  |   |  /   \\_ |     \\|   [_  |  |  \033[0m:\n"
+":\033[34m|     | |  | |     | |  |   |  |   |  \\     ||  .  ||     | |  |  \033[0m:\n"
+":\033[35m|_____||____||_____||____|  |__|  |____\\____||__|\\_||_____| |__|  \033[0m:\n"
+":                   F R I E N D S H I P E N D E R                  :\n"
+":\033[35m         ___ ___   ___   ____   ____  ______   ___   ____         \033[0m:\n"
+":\033[35m        |   |   | /   \\ |    \\ |    ||      | /   \\ |    \\        \033[0m:\n"
+":\033[34m        | _   _ ||     ||  _  | |  | |      ||     ||  D  )       \033[0m:\n"
+":\033[36m        |  \\_/  ||  O  ||  |  | |  | |_|  |_||  O  ||    /        \033[0m:\n"
+":\033[32m        |   |   ||     ||  |  | |  |   |  |  |     ||    \\        \033[0m:\n"
+":\033[33m        |   |   ||     ||  |  | |  |   |  |  |     ||  .  \\       \033[0m:\n"
+":\033[31m        |___|___| \\___/ |__|__||____|  |__|   \\___/ |__|\\_|       \033[0m:\n"
+"····································································\n"
+"建议通过 \"在终端中打开\" 打开本程序, 然后运行时在后面加上 -h 参数看说明!\n"
+"\033[33m汐❗加❗加❗编❗写❗, 性❗能❗更❗强❗大❗\033[0m\n"
+"\033[31m超 强 性 能 😎😎😎无 所 畏 惧 ☝☝☝🤓🤓🤓👉👉👉\033[0m\n"
+"参数 \033[35m--id 票务ID\033[0m 来指定票务ID, 默认为102194 (BW2025)\033[0m\n"
+"参数 \033[35m--ticket-no 票种标号\033[0m 来指定想蹲的票 (0代表不蹲票仅查看)\033[0m\n"
+"本程序为 C++ 版, \033[33m性能更强大\033[0m, 免登录, 灵活性强,\n"
+"若要进一步更改票务和票种信息可以 \033[32m可更改 config.txt 文件\033[0m 重新配置\n"
+"运行前使用参数 \033[35m-h\033[0m 来查看更多的帮助信息, 帮助信息很重要的\033[0m\n"
 "项目github页面：\033[36mhttps://github.com/fsender/BiliTicketMonitor\033[0m\n"
 "  \033[34m按 Control-C 退出本程序.\033[0m\n"
 "监测模式";
@@ -52,11 +77,11 @@ const char *version = "BiliTicketMonitor Version " VERSION "\n作者: Friendship
 
 void show_welcome(){
     cout << welcome << endl;
-    for(int i = 0;i<INIT_DELAY_SEC;i++){
-        cout << format("{} 秒后进入监测模式\r", INIT_DELAY_SEC-i);
-        this_thread::sleep_for(chrono::seconds(1));
-    }
-    cout << endl;
+    //for(int i = 0;i<INIT_DELAY_SEC;i++){
+    //    cout << format("{} 秒后进入监测模式\r", INIT_DELAY_SEC-i);
+    //    this_thread::sleep_for(chrono::seconds(1));
+    //}
+    //cout << endl;
 }
 
 int main(int argc, const char **argv) {
@@ -64,8 +89,8 @@ int main(int argc, const char **argv) {
     //clear_screen();
     Config config;
     // 先读取配置文件
+    show_welcome();
     if(!config.checkconf()) {
-        show_welcome();
         config.readconf();
     }
     

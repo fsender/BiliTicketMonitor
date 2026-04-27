@@ -14,7 +14,7 @@ const char* FILE_DATA = R"(
 #          示例: "5 python grab_ticket.py --screen {screen_id} --sku {sku_id}"
 )";
 
-const int DEFAULT_REFRESH = 300;
+const int DEFAULT_REFRESH = 1; //新API,  不会412, 因此可以无延迟检查.
 const int DEFAULT_TIMEOUT = 10000;
 const string DEFAULT_HEADER = "User-Agent: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
 
