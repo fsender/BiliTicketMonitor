@@ -18,6 +18,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # 添加可执行文件
 add_executable(BiliTicketMonitor
     main.cpp
+    Config.cpp
+    Monitor.cpp
     cJSON.c   # 包含cJSON源代码
 )
 
