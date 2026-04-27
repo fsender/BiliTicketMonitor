@@ -1,11 +1,9 @@
 102194
 5000
 10000
-User-Agent: Mozilla/5.0
+User-Agent: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36
 
-2
-5 
-7 test_grab/test_grab.py --sku {sku_id}
+0
 
 # 说明: 第一行为B站会员购的票务ID
 # 第二行为API调用间隔, 单位ms

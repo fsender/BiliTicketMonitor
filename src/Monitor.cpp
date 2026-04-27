@@ -116,7 +116,7 @@ void Monitor::run_multi_monitor() {
     {
         vector<future<int>> init_futures;
         for (const auto& target : Config::TARGETS) {
-            init_futures.push_back(pool.enqueue([this, &target]() {
+            init_futures.push_back(pool.enqueue([this, target]() {
                 request_count++;
                 return check_stock(target.screen_id, target.sku_id);
             }));
@@ -160,11 +160,9 @@ void Monitor::run_multi_monitor() {
     }
 
     while (!stop) {
-        cout << "\033[32m当前时间: " << get_ms_timestamp() << " | 已发送: " << request_count << " 次\033[0m\r" << flush;
-
         vector<future<int>> futures;
         for (const auto& target : Config::TARGETS) {
-            futures.push_back(pool.enqueue([this, &target]() {
+            futures.push_back(pool.enqueue([this, target]() {
                 request_count++;
                 return check_stock(target.screen_id, target.sku_id);
             }));
@@ -225,6 +223,9 @@ void Monitor::run_multi_monitor() {
             }
             cout << "\033[u" << flush;
         }
+
+        // 显示当前时间状态行
+        cout << "\033[32m当前时间: " << get_ms_timestamp() << " | 已发送: " << request_count << " 次\033[0m\r" << flush;
 
         this_thread::sleep_for(chrono::milliseconds(Config::REFRESH_INTERVAL));
     }

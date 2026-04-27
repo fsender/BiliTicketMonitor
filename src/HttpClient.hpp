@@ -107,7 +107,10 @@ inline HttpResponse http_post(const string& url, const string& json_body, const 
         curl_easy_setopt(curl, CURLOPT_POST, 1L);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_body.c_str());
         curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, json_body.size());
-        setup_curl_opts(curl, url, headers, response);
+        // 构造带 Content-Type 的请求头
+        vector<string> all_headers = headers;
+        all_headers.insert(all_headers.begin(), "Content-Type: application/json");
+        setup_curl_opts(curl, url, all_headers, response);
     }
     return response;
 }
