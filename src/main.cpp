@@ -2,13 +2,13 @@
  * @file main.cpp
  * @author FriendshipEnder (https://space.bilibili.com/180327370)
  * @brief B站票务监控器
- * @version 3.0.0
+ * @version 3.0.1
  * @date 2025-07-01
  * @date 2026-04-28
  * @copyright Copyright (c) 2025
  */
 
-#define VERSION "3.0.0"
+#define VERSION "3.0.1"
 #define INIT_DELAY_SEC 1
 
 #include <iostream>

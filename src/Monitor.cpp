@@ -64,7 +64,7 @@ void Monitor::start() {
     }
 
     Config::project_name = project;
-    cout << "\033[32m已发现 " << all_tickets.size() << " 个票种\033[0m" << endl;
+    cout << "\033[32m已发现 " << all_tickets.size() << " 种不同SKU/票档\033[0m" << endl;
 
     // 根据配置选择要监控的目标
     Config::TARGETS.clear();
@@ -121,8 +121,8 @@ void Monitor::run_multi_monitor() {
             const auto& target = Config::TARGETS[i];
             string body = json_build_stock_check(Config::TICKET_ID, target.sku_id, target.screen_id);
             multi.add_post((int)i, stock_url, body, Config::HEADERS);
-            request_count++;
         }
+        request_count++;
         multi.perform();
         while (!multi.all_done()) {
             multi.wait(1);
@@ -159,7 +159,7 @@ void Monitor::run_multi_monitor() {
 
         string title = Config::project_name.empty()
             ? format("B站票务监控器 - {} 个目标", num_targets)
-            : format("{}({}) - ", Config::project_name, num_targets);
+            : format("\033[35m{} (\033[33m{}\033[35m) -", Config::project_name, num_targets);
         cout << "\033[1m" << title << "  \033[32m更新: " << get_ms_timestamp() << " (第 " << request_count << " 次)" << "\033[0m" << endl;
         cout << "\033[36mNo.   目标" << string(max_label_width > 7 ? max_label_width - 7 : 0, ' ') << "状态\033[0m" << endl;
         cout << string(col_gap + 8, '-') << endl;
@@ -192,9 +192,9 @@ void Monitor::run_multi_monitor() {
         bool changed = false;
         auto cycle_start = chrono::steady_clock::now();
         while (!multi.all_done() && !stop) {
-            // 防止单次循环卡死: 超过30秒强制退出
-            if (chrono::duration_cast<chrono::seconds>(chrono::steady_clock::now() - cycle_start).count() > 30) {
-                cout << "\033[33m[警告] 单次轮询超时(>30s)，强制进入下一周期\033[0m" << endl;
+            // 防止单次循环卡死: 超过 Config::TIMEOUT 毫秒强制退出
+            if (chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - cycle_start).count() > Config::TIMEOUT) {
+                cout << "\033[33m[警告] 单次轮询超时(" << Config::TIMEOUT << "ms)，强制进入下一周期\033[0m" << endl;
                 break;
             }
             multi.wait(1);
