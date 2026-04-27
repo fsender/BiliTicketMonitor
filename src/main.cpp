@@ -61,7 +61,7 @@ void show_welcome(){
 
 int main(int argc, const char **argv) {
     
-    clear_screen();
+    //clear_screen();
     Config config;
     // 先读取配置文件
     if(!config.checkconf()) {

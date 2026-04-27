@@ -15,31 +15,35 @@ public:
         HttpResponse response;
         bool done = false;
         CURL* easy = nullptr;
-        string post_body;  // 保持 post body 生命周期
+        string post_body;
     };
 
-    HttpMulti() {
-        multi = curl_multi_init();
-    }
+    HttpMulti() { multi = curl_multi_init(); }
 
     ~HttpMulti() {
-        reset();
+        cleanup_all();
         if (multi) curl_multi_cleanup(multi);
     }
 
     HttpMulti(const HttpMulti&) = delete;
     HttpMulti& operator=(const HttpMulti&) = delete;
 
-    // 添加一个异步 POST 请求
+    // 添加请求 (优先复用已有 handle)
     void add_post(int target_idx, const string& url, 
                   const string& json_body, const vector<string>& headers) {
         auto* req = new Request();
         req->target_idx = target_idx;
-        req->post_body = json_body;  // 拷贝到Request中，确保生命周期
-        req->easy = curl_easy_init();
-        if (!req->easy) { delete req; return; }
+        req->post_body = json_body;
 
-        // 构造带 Content-Type 的请求头
+        // 复用空闲 handle 或新建
+        if (!free_handles.empty()) {
+            req->easy = free_handles.back();
+            free_handles.pop_back();
+            curl_easy_reset(req->easy);
+        } else {
+            req->easy = curl_easy_init();
+        }
+
         curl_slist* slist = nullptr;
         slist = curl_slist_append(slist, "Content-Type: application/json");
         for (const auto& h : headers)
@@ -62,13 +66,8 @@ public:
         curl_multi_add_handle(multi, req->easy);
     }
 
-    // 驱动异步传输
-    void perform() {
-        int running;
-        curl_multi_perform(multi, &running);
-    }
+    void perform() { int r; curl_multi_perform(multi, &r); }
 
-    // 获取本轮完成的请求
     vector<Request*> get_completed() {
         vector<Request*> result;
         int msgs;
@@ -89,26 +88,25 @@ public:
         return result;
     }
 
-    // 是否全部完成
     bool all_done() const {
         for (auto* req : requests)
             if (!req->done) return false;
         return true;
     }
 
-    // 等待事件发生或超时
     int wait(int timeout_ms) {
         int numfds;
         curl_multi_wait(multi, nullptr, 0, timeout_ms, &numfds);
         return numfds;
     }
 
-    // 重置：清理所有请求，准备下一轮
-    void reset() {
+    // 复用：重置请求状态，保留底层 curl handle (连接缓存不丢)
+    void reuse() {
         for (auto* req : requests) {
             if (req->easy) {
                 curl_multi_remove_handle(multi, req->easy);
-                curl_easy_cleanup(req->easy);
+                // 保留 easy handle 不清理 → TCP 连接持续复用
+                free_handles.push_back(req->easy);
             }
             delete req;
         }
@@ -118,6 +116,13 @@ public:
 private:
     CURLM* multi = nullptr;
     vector<Request*> requests;
+    vector<CURL*> free_handles;
+
+    void cleanup_all() {
+        reuse();
+        for (auto* h : free_handles) curl_easy_cleanup(h);
+        free_handles.clear();
+    }
 
     static size_t write_cb(void* data, size_t size, size_t nmemb, void* userp) {
         auto* s = static_cast<string*>(userp);
