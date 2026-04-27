@@ -50,7 +50,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libcurl4-openssl-dev cmake g++-13
+          sudo apt-get install -y -qq libcurl4-openssl-dev cmake g++-13 gcc-13
           echo "CXX=g++-13" >> $GITHUB_ENV
           echo "CC=gcc-13" >> $GITHUB_ENV
 
@@ -61,7 +61,7 @@ jobs:
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          vcpkg install curl:x64-windows --quiet
+          vcpkg install curl:x64-windows
           echo "VCPKG_ROOT=${VCPKG_ROOT}" >> $env:GITHUB_ENV
 
       - name: Configure (Linux/macOS)
