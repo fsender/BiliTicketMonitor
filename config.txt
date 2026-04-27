@@ -1,0 +1,17 @@
+102194
+5000
+10000
+User-Agent: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36
+
+0
+
+# 说明: 第一行为B站会员购的票务ID
+# 第二行为API调用间隔, 单位ms
+# 第三行为API超时时间, 单位ms
+# 第四行为请求标识符 (User-Agent)
+# 第五行为Bark推送Key (空=禁用)
+# 第六行为监控目标数量 (0=监控全部自动发现的票种)
+# 第七行起: 每行格式为 "序号 命令", 序号为启动时表格中显示的编号
+#          命令中的 {screen_id} 和 {sku_id} 会被替换为实际值
+# 示例: "5 python grab_ticket.py --screen {screen_id} --sku {sku_id}"
+

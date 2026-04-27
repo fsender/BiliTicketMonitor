@@ -9,39 +9,31 @@ static pair<string, vector<TargetConfig>> discover_from_getv2(const string& json
     cJSON* data = cJSON_GetObjectItemCaseSensitive(root, "data");
     if (data) {
         cJSON* name_item = cJSON_GetObjectItemCaseSensitive(data, "name");
-        if (cJSON_IsString(name_item) && name_item->valuestring) {
-            project_name = name_item->valuestring;
-        }
+        if (cJSON_IsString(name_item) && name_item->valuestring) project_name = name_item->valuestring;
         cJSON* screen_list = cJSON_GetObjectItemCaseSensitive(data, "screen_list");
         if (screen_list && cJSON_IsArray(screen_list)) {
             for (int si = 0; si < cJSON_GetArraySize(screen_list); si++) {
                 cJSON* screen = cJSON_GetArrayItem(screen_list, si);
                 if (!screen) continue;
-                // 获取screen_id (屏幕/场次级别，字段名为 id)
-                cJSON* sid_item = cJSON_GetObjectItemCaseSensitive(screen, "id");
-                int screen_id = cJSON_IsNumber(sid_item) ? (int)sid_item->valuedouble : 0;
-                
+                cJSON* sid = cJSON_GetObjectItemCaseSensitive(screen, "id");
+                int screen_id = cJSON_IsNumber(sid) ? (int)sid->valuedouble : 0;
                 cJSON* ticket_list = cJSON_GetObjectItemCaseSensitive(screen, "ticket_list");
                 if (ticket_list && cJSON_IsArray(ticket_list)) {
                     for (int tj = 0; tj < cJSON_GetArraySize(ticket_list); tj++) {
                         cJSON* ticket = cJSON_GetArrayItem(ticket_list, tj);
                         if (!ticket) continue;
-                        // 获取票种ID (sku_id，字段名为 id)
                         cJSON* id_item = cJSON_GetObjectItemCaseSensitive(ticket, "id");
                         int sku_id = cJSON_IsNumber(id_item) ? (int)id_item->valuedouble : 0;
-                        
-                        // 获取票种名称
-                        string screen_name = "", desc = "";
-                        cJSON* sn = cJSON_GetObjectItemCaseSensitive(ticket, "screen_name");
-                        if (cJSON_IsString(sn) && sn->valuestring) screen_name = sn->valuestring;
-                        cJSON* di = cJSON_GetObjectItemCaseSensitive(ticket, "desc");
-                        if (cJSON_IsString(di) && di->valuestring) desc = di->valuestring;
-                        
+                        string sn = "", desc = "";
+                        cJSON* i1 = cJSON_GetObjectItemCaseSensitive(ticket, "screen_name");
+                        if (cJSON_IsString(i1) && i1->valuestring) sn = i1->valuestring;
+                        cJSON* i2 = cJSON_GetObjectItemCaseSensitive(ticket, "desc");
+                        if (cJSON_IsString(i2) && i2->valuestring) desc = i2->valuestring;
                         if (screen_id > 0 && sku_id > 0) {
                             TargetConfig tc;
                             tc.screen_id = to_string(screen_id);
                             tc.sku_id = to_string(sku_id);
-                            tc.label = screen_name;
+                            tc.label = sn;
                             if (!desc.empty()) tc.label += " " + desc;
                             targets.push_back(tc);
                         }
@@ -55,24 +47,46 @@ static pair<string, vector<TargetConfig>> discover_from_getv2(const string& json
 }
 
 void Monitor::start() {
-    if (Config::TARGETS.empty()) {
-        // 自动发现: 调用一次getV2获取所有票种
-        cout << "正在获取票务信息..." << endl;
-        HttpResponse resp = http_get(Config::API_URL, Config::HEADERS);
-        if (resp.status_code != 200) {
-            cout << "\033[31m错误：获取票务信息失败 (HTTP " << resp.status_code << ")\033[0m" << endl;
-            cout << "请使用 --target 手动指定监控目标。" << endl;
-            return;
-        }
-        auto [project, targets] = discover_from_getv2(resp.data);
-        if (targets.empty()) {
-            cout << "\033[31m错误：未找到任何可监控的票种\033[0m" << endl;
-            return;
-        }
-        Config::project_name = project;
-        Config::TARGETS = targets;
-        cout << "\033[32m已发现 " << targets.size() << " 个票种\033[0m" << endl;
+    // 硬编码API URL
+    string getv2_url = "https://show.bilibili.com/api/ticket/project/getV2?version=134&id=" + Config::TICKET_ID;
+
+    cout << "正在获取票务信息..." << endl;
+    HttpResponse resp = http_get(getv2_url, Config::HEADERS);
+    if (resp.status_code != 200) {
+        cout << "\033[31m错误：获取票务信息失败 (HTTP " << resp.status_code << ")\033[0m" << endl;
+        return;
     }
+    auto [project, all_tickets] = discover_from_getv2(resp.data);
+    if (all_tickets.empty()) {
+        cout << "\033[31m错误：未找到任何可监控的票种\033[0m" << endl;
+        return;
+    }
+
+    Config::project_name = project;
+    cout << "\033[32m已发现 " << all_tickets.size() << " 个票种\033[0m" << endl;
+
+    // 根据配置选择要监控的目标
+    Config::TARGETS.clear();
+    target_scripts.clear();
+    if (Config::MONITORED.empty()) {
+        // 监控全部，无自定义脚本
+        Config::TARGETS = all_tickets;
+        target_scripts.assign(Config::TARGETS.size(), "");
+    } else {
+        // 只监控配置中指定的目标 (通过 ticket_no 索引)
+        for (const auto& mt : Config::MONITORED) {
+            int idx = mt.ticket_no - 1; // 表格从1开始编号
+            if (idx >= 0 && idx < (int)all_tickets.size()) {
+                Config::TARGETS.push_back(all_tickets[idx]);
+                target_scripts.push_back(mt.script_command);
+            }
+        }
+        if (Config::TARGETS.empty()) {
+            cout << "\033[31m错误：配置的监控目标序号无效\033[0m" << endl;
+            return;
+        }
+    }
+
     run_multi_monitor();
 }
 
@@ -82,12 +96,11 @@ void Monitor::handle_error(const string& msg, bool critical) {
     if (critical) stop = true;
 }
 
-// 多目标并发监控模式 (stock/check API) — 表格输出
 void Monitor::run_multi_monitor() {
     size_t num_targets = Config::TARGETS.size();
     ThreadPool pool(num_targets);
-    vector<pair<string, int>> current_status; // label, stock_code
-    
+    vector<pair<string, int>> current_status;
+
     // 首次查询所有目标获取初始状态
     {
         vector<future<int>> init_futures;
@@ -104,41 +117,36 @@ void Monitor::run_multi_monitor() {
             last_stock_status[Config::TARGETS[i].screen_id] = code;
         }
     }
-    
-    // 初始表格渲染 (带ANSI光标定位)
+
+    // 初始表格渲染
     {
-        // 计算列宽: 寻找最长的标签
         size_t max_label_width = 0;
         for (const auto& [label, code] : current_status) {
             if (label.size() > max_label_width) max_label_width = label.size();
         }
-        size_t col1_width = 8 + max_label_width; // "No.    " + label
-        size_t status_col = col1_width + 2;       // 状态列起始位置
-        
-        string title = Config::project_name.empty() 
+        size_t col_gap = 8 + max_label_width + 2;
+
+        string title = Config::project_name.empty()
             ? format("B站票务监控器 - {} 个目标", num_targets)
             : format("{} - {} 个目标", Config::project_name, num_targets);
         cout << "\033[1m" << title << "\033[0m" << endl;
         cout << "\033[32m更新: " << get_ms_timestamp() << "\033[0m" << endl;
         cout << "\033[36mNo.   目标" << string(max_label_width > 4 ? max_label_width - 4 : 0, ' ') << "  状态\033[0m" << endl;
-        cout << string(status_col + 8, '-') << endl;
+        cout << string(col_gap + 8, '-') << endl;
         for (size_t i = 0; i < num_targets; i++) {
             auto& [label, code] = current_status[i];
             string color = stock_status_color(code);
             string text = code == -1 ? "查询失败" : stock_status_to_string(code);
             cout << format("\033[33m[{:>2}]\033[0m  ", i + 1) << label;
-            cout << "\033[" << status_col << "G" << color << text << "\033[0m" << endl;
+            cout << "\033[" << col_gap << "G" << color << text << "\033[0m" << endl;
         }
-        // 在表格下方记录列宽供重绘使用
-        last_status_col = status_col;
-        cout << "\033[" << (num_targets + 5) << "E"; // 移到表格下方
+        last_status_col = col_gap;
+        cout << "\033[" << (num_targets + 5) << "E";
     }
-    
+
     while (!stop) {
-        // 显示当前时间和请求计数
         cout << "\033[32m当前时间: " << get_ms_timestamp() << " | 已发送: " << request_count << " 次\033[0m\r" << flush;
-        
-        // 并发检查所有目标的库存
+
         vector<future<int>> futures;
         for (const auto& target : Config::TARGETS) {
             futures.push_back(pool.enqueue([this, &target]() {
@@ -146,8 +154,7 @@ void Monitor::run_multi_monitor() {
                 return check_stock(target.screen_id, target.sku_id);
             }));
         }
-        
-        // 收集结果，检测变化
+
         bool changed = false;
         for (size_t i = 0; i < num_targets; i++) {
             if (stop) break;
@@ -155,64 +162,56 @@ void Monitor::run_multi_monitor() {
                 int code = futures[i].get();
                 const auto& target = Config::TARGETS[i];
                 auto& last = last_stock_status[target.screen_id];
-                
+
                 if (code != -1 && code != last) {
                     last = code;
                     current_status[i].second = code;
                     changed = true;
                     healthy = true;
-                    
-                    // 触发Bark推送通知
+
+                    // 有库存时执行自定义脚本
+                    if (code == 3 && !target_scripts[i].empty()) {
+                        string cmd = replace_vars(target_scripts[i], target.screen_id, target.sku_id);
+                        cout << "\033[32m执行: " << cmd << "\033[0m" << endl;
+                        system(cmd.c_str());
+                    }
+
+                    // Bark推送通知
                     string label_copy = target.label;
                     if (code == 3) {
-                        ThreadPool bark_pool(1);
-                        bark_pool.enqueue([label_copy]() {
+                        ThreadPool bp(1);
+                        bp.enqueue([label_copy]() {
                             BarkClient::send("有库存 - " + label_copy,
-                                "赶紧去抢票！项目ID: " + Config::TICKET_ID, true);
+                                "项目ID: " + Config::TICKET_ID, true);
                         });
                     } else if (code == 1) {
-                        ThreadPool bark_pool(1);
-                        bark_pool.enqueue([label_copy]() {
+                        ThreadPool bp(1);
+                        bp.enqueue([label_copy]() {
                             BarkClient::send("暂时售罄 - " + label_copy,
-                                "可能有补票机会。项目ID: " + Config::TICKET_ID, false);
+                                "项目ID: " + Config::TICKET_ID, false);
                         });
                     }
                 }
-            } catch (...) {
-                // 跳过失败的检查
-            }
+            } catch (...) {}
         }
-        
-        // 状态变化时重新渲染表格
+
         if (changed) {
-            cout << "\033[s"; // 保存光标位置 (表格底部)
+            cout << "\033[s";
             for (size_t i = 0; i < num_targets; i++) {
                 auto& [label, code] = current_status[i];
                 string color = stock_status_color(code);
                 string text = code == -1 ? "查询失败" : stock_status_to_string(code);
-                cout << "\033[1A\033[K"; // 上一行，清行
+                cout << "\033[1A\033[K";
                 cout << format("\033[33m[{:>2}]\033[0m  ", i + 1) << label;
                 cout << "\033[" << last_status_col << "G" << color << text << "\033[0m" << endl;
             }
-            cout << "\033[u"; // 恢复光标位置
-            cout << flush;
-            // 检查是否有余票触发BATPATH
-            for (auto& [label, code] : current_status) {
-                if (code == 3) {
-                    if (Config::BATPATH == "") {
-                        cout << "\033[32m您订阅的票种有票了! (" << label << ")\033[0m" << endl;
-                    } else {
-                        system(Config::BATPATH.c_str());
-                    }
-                }
-            }
+            cout << "\033[u" << flush;
         }
-        
+
         this_thread::sleep_for(chrono::milliseconds(Config::REFRESH_INTERVAL));
     }
 }
 
-// 检查单个目标库存
 int Monitor::check_stock(const string& screen_id, const string& sku_id) {
     string json_body = json_build_stock_check(Config::TICKET_ID, sku_id, screen_id);
     string url = "https://show.bilibili.com/api/ticket/stock/check";
@@ -221,7 +220,6 @@ int Monitor::check_stock(const string& screen_id, const string& sku_id) {
     return parse_stock_status(resp.data);
 }
 
-// 毫秒时间戳
 string Monitor::get_ms_time() {
     return get_ms_timestamp();
 }
