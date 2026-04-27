@@ -85,6 +85,14 @@ const char *FILE_DATA = R"(
 )";
 
 // 配置类
+
+// 多目标监控配置
+struct TargetConfig {
+    string screen_id;
+    string sku_id;
+    string label;
+};
+
 class Config {
     protected: 
         bool configValid;
@@ -99,6 +107,11 @@ class Config {
         static string API_URL;
         static vector<string> HEADERS;
         static int TICKETNO;
+        static vector<TargetConfig> TARGETS;
+        static bool BARK_ENABLED;
+        static string BARK_KEY;
+        static string BARK_SERVER;
+        static string BARK_GROUP;
 
         static void init() {
             API_URL = vformat(API_BASE, make_format_args(TICKET_ID));
@@ -120,6 +133,11 @@ int Config::TICKETNO = 0;
 string Config::API_BASE = DEFAULT_API_BASE;
 string Config::API_URL;
 vector<string> Config::HEADERS = { DEFAULT_HEADER };
+vector<TargetConfig> Config::TARGETS;
+bool Config::BARK_ENABLED = false;
+string Config::BARK_KEY = "";
+string Config::BARK_SERVER = "https://api.day.app";
+string Config::BARK_GROUP = "票务监控";
 
 // 移除前后空格
 string trim(const string& str);
@@ -149,6 +167,15 @@ bool isValidBatPath(const string& path) {
     
     return true;
 }
+
+// 检查目标配置是否有效
+bool isValidTargetConfig(const TargetConfig& tc) {
+    if (!isValidPositiveInteger(tc.screen_id)) return false;
+    if (!isValidPositiveInteger(tc.sku_id)) return false;
+    if (tc.label.empty()) return false;
+    return true;
+}
+
 bool Config::checkconf(){
     configValid = true;
     // 尝试读取配置文件
@@ -327,6 +354,43 @@ struct HttpResponse {
     string error;
 };
 
+// 构建库存检查API的JSON请求体
+string json_build_stock_check(const string& projectId, const string& skuId, const string& screenId) {
+    cJSON* root = cJSON_CreateObject();
+    if (!root) return "";
+    
+    cJSON_AddStringToObject(root, "projectId", projectId.c_str());
+    cJSON_AddNumberToObject(root, "skuId", stoi(skuId));
+    cJSON_AddNumberToObject(root, "screenId", stoi(screenId));
+    
+    char* json_str = cJSON_PrintUnformatted(root);
+    string result(json_str);
+    free(json_str);
+    cJSON_Delete(root);
+    return result;
+}
+
+// 构建Bark推送通知的JSON请求体
+string json_build_bark_payload(const string& title, const string& body, const string& group, bool is_stock) {
+    cJSON* root = cJSON_CreateObject();
+    if (!root) return "";
+    
+    cJSON_AddStringToObject(root, "title", title.c_str());
+    cJSON_AddStringToObject(root, "body", body.c_str());
+    cJSON_AddStringToObject(root, "group", group.c_str());
+    cJSON_AddStringToObject(root, "level", is_stock ? "critical" : "active");
+    
+    if (is_stock) {
+        cJSON_AddStringToObject(root, "sound", "alarm");
+    }
+    
+    char* json_str = cJSON_PrintUnformatted(root);
+    string result(json_str);
+    free(json_str);
+    cJSON_Delete(root);
+    return result;
+}
+
 // 回调函数用于接收HTTP响应数据
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     size_t realsize = size * nmemb;
@@ -384,6 +448,64 @@ HttpResponse http_get(const string& url, const vector<string>& headers) {
     }
     
     return response;
+}
+
+// 执行HTTP POST请求
+HttpResponse http_post(const string& url, const string& json_body, const vector<string>& headers) {
+    HttpResponse response;
+    CURL* curl = curl_easy_init();
+    
+    if(curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response.data);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, Config::TIMEOUT);
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_body.c_str());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, json_body.size());
+        
+        struct curl_slist* header_list = nullptr;
+        header_list = curl_slist_append(header_list, "Content-Type: application/json");
+        for (const auto& header : headers) {
+            header_list = curl_slist_append(header_list, header.c_str());
+        }
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, header_list);
+        
+        CURLcode res = curl_easy_perform(curl);
+        if (res != CURLE_OK) {
+            response.error = curl_easy_strerror(res);
+        } else {
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response.status_code);
+        }
+        
+        curl_slist_free_all(header_list);
+        curl_easy_cleanup(curl);
+    }
+    
+    return response;
+}
+
+// 解析库存检查API的JSON响应，提取stockStatus
+int parse_stock_status(const string& json_str) {
+    cJSON* root = cJSON_Parse(json_str.c_str());
+    if (!root) return -1;
+    
+    cJSON* data = cJSON_GetObjectItemCaseSensitive(root, "data");
+    if (!data) {
+        cJSON_Delete(root);
+        return -1;
+    }
+    
+    cJSON* stock_status = cJSON_GetObjectItemCaseSensitive(data, "stockStatus");
+    int result = -1;
+    if (stock_status && cJSON_IsNumber(stock_status)) {
+        result = (int)stock_status->valuedouble;
+    }
+    
+    cJSON_Delete(root);
+    return result;
 }
 
 // 处理JSON数据
@@ -542,6 +664,33 @@ const unordered_map<string, string> StatusColor = {
     {"预售中", "\033[32m"},      // 绿色
 };
 
+// 库存状态码映射 (stock/check API)
+const unordered_map<int, string> StockStatusMap = {
+    {1, "暂时售罄"},
+    {2, "已售罄"},
+    {3, "有库存"},
+};
+
+// 库存状态颜色映射
+const unordered_map<int, string> StockStatusColor = {
+    {1, "\033[33m"},   // 黄色
+    {2, "\033[31m"},   // 红色
+    {3, "\033[32m"},   // 绿色
+};
+
+// 库存状态码转文本
+string stock_status_to_string(int code) {
+    auto it = StockStatusMap.find(code);
+    if (it != StockStatusMap.end()) return it->second;
+    return "未知状态";
+}
+
+// 库存状态码转颜色
+string stock_status_color(int code) {
+    auto it = StockStatusColor.find(code);
+    if (it != StockStatusColor.end()) return it->second;
+    return "\033[0m";
+}
 
 // 监控器类
 class Monitor {
