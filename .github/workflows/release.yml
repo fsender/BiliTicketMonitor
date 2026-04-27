@@ -104,13 +104,30 @@ jobs:
         with:
           path: artifacts
 
+      - name: Prepare release files (rename with platform names)
+        run: |
+          # 创建发布目录，用平台名重命名文件
+          mkdir -p release_files
+          for dir in artifacts/*/; do
+            platform=$(basename "$dir")
+            for f in "$dir"*; do
+              ext=""
+              case "$platform" in
+                *win*) ext=".exe" ;;
+              esac
+              cp "$f" "release_files/${platform}${ext}"
+            done
+          done
+          echo "=== Release files ==="
+          ls -lh release_files/
+
       - name: Generate release notes
         run: |
           echo "## BiliTicketMonitor ${{ github.ref_name }}" > release-notes.md
           echo "" >> release-notes.md
           echo "### Downloads" >> release-notes.md
           echo "" >> release-notes.md
-          for f in artifacts/*/*; do
+          for f in release_files/*; do
             name=$(basename "$f")
             size=$(ls -lh "$f" | awk '{print $5}')
             echo "- \`$name\` ($size)" >> release-notes.md
@@ -122,4 +139,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes.md
-          files: artifacts/*/*
+          files: release_files/*
