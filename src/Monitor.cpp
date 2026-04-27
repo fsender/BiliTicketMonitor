@@ -79,7 +79,7 @@ void Monitor::start() {
             int idx = mt.ticket_no - 1;
             if (idx >= 0 && idx < (int)all_tickets.size()) {
                 target_scripts[idx] = mt.script_command;
-                monitored_flags[idx] = !mt.script_command.empty();
+                monitored_flags[idx] = true;
             }
         }
     } else {
