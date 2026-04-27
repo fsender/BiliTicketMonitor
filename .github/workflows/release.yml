@@ -90,8 +90,51 @@ jobs:
           path: ${{ matrix.binary }}
           if-no-files-found: error
 
+  build-static:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64 (fully static)
+            artifact: BiliTicketMonitor-linux-x86_64-static
+            image: amd64/alpine:latest
+            arch: x86_64
+
+          - name: Linux ARM64 (fully static)
+            artifact: BiliTicketMonitor-linux-arm64-static
+            image: arm64v8/alpine:latest
+            arch: aarch64
+
+    container:
+      image: ${{ matrix.image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Alpine)
+        run: |
+          apk add --no-cache curl-dev cmake g++ build-base linux-headers
+          cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON \
+            -DCURL_USE_STATIC_LIBS=ON \
+            -DCMAKE_EXE_LINKER_FLAGS="-static"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Smoke test
+        run: build/bin/BiliTicketMonitor --version
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: build/bin/BiliTicketMonitor
+          if-no-files-found: error
+
   create-release:
-    needs: build
+    needs: [build, build-static]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     permissions:

@@ -159,8 +159,8 @@ void Monitor::run_multi_monitor() {
 
         string title = Config::project_name.empty()
             ? format("B站票务监控器 - {} 个目标", num_targets)
-            : format("{} - {} 个目标", Config::project_name, num_targets);
-        cout << "\033[1m" << title << "  \033[32m更新: " << get_ms_timestamp() << "\033[0m" << endl;
+            : format("{}({}) - ", Config::project_name, num_targets);
+        cout << "\033[1m" << title << "  \033[32m更新: " << get_ms_timestamp() << " (第 " << request_count << " 次)" << "\033[0m" << endl;
         cout << "\033[36mNo.   目标" << string(max_label_width > 7 ? max_label_width - 7 : 0, ' ') << "状态\033[0m" << endl;
         cout << string(col_gap + 8, '-') << endl;
         for (size_t i = 0; i < num_targets; i++) {
@@ -190,7 +190,13 @@ void Monitor::run_multi_monitor() {
         multi.perform();
 
         bool changed = false;
+        auto cycle_start = chrono::steady_clock::now();
         while (!multi.all_done() && !stop) {
+            // 防止单次循环卡死: 超过30秒强制退出
+            if (chrono::duration_cast<chrono::seconds>(chrono::steady_clock::now() - cycle_start).count() > 30) {
+                cout << "\033[33m[警告] 单次轮询超时(>30s)，强制进入下一周期\033[0m" << endl;
+                break;
+            }
             multi.wait(1);
             multi.perform();
             for (auto* req : multi.get_completed()) {
@@ -212,7 +218,7 @@ void Monitor::run_multi_monitor() {
                     if (!target_scripts[idx].empty()) {
                         string cmd = replace_vars(target_scripts[idx], target.screen_id, target.sku_id);
                         cout << "\033[32m执行: " << cmd << "\033[0m" << endl;
-                        system(cmd.c_str());
+                        thread([cmd]() { system(cmd.c_str()); }).detach();
                     } else {
                         cout << "\033[32m" << target.label << " 您订阅的票种有票了!\033[0m" << endl;
                     }
