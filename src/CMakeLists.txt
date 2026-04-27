@@ -32,7 +32,7 @@ target_link_libraries(BiliTicketMonitor PRIVATE
 # 平台特定设置
 if(WIN32)
     target_link_libraries(BiliTicketMonitor PRIVATE ws2_32 wininet)
-    target_compile_definitions(BiliTicketMonitor PRIVATE CURL_STATICLIB=1)
+    target_compile_definitions(BiliTicketMonitor PRIVATE CURL_STATICLIB=1 _HAS_STD_BYTE=0)
 else()
     target_link_libraries(BiliTicketMonitor PRIVATE pthread)
 endif()
