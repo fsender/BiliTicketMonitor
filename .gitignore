@@ -40,6 +40,8 @@
 *.dwo
 
 .*/
+!.github/
+
 build
 release
 config.txt

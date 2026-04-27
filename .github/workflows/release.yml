@@ -1,0 +1,123 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version'
+        required: true
+        default: '3.0.0'
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            runner: ubuntu-22.04
+            artifact: BiliTicketMonitor-linux-x86_64
+            cmake_args: -DCMAKE_BUILD_TYPE=Release
+            binary: build/bin/BiliTicketMonitor
+
+          - name: Linux ARM64
+            runner: ubuntu-22.04-arm
+            artifact: BiliTicketMonitor-linux-arm64
+            cmake_args: -DCMAKE_BUILD_TYPE=Release
+            binary: build/bin/BiliTicketMonitor
+
+          - name: macOS Apple Silicon
+            runner: macos-14
+            artifact: BiliTicketMonitor-macos-arm64
+            cmake_args: -DCMAKE_BUILD_TYPE=Release
+            binary: build/bin/BiliTicketMonitor
+
+          - name: Windows x86_64
+            runner: windows-2022
+            artifact: BiliTicketMonitor-win-x86_64.exe
+            cmake_args: -DCMAKE_BUILD_TYPE=Release
+            binary: build/bin/Release/BiliTicketMonitor.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libcurl4-openssl-dev cmake g++
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install curl cmake
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          vcpkg install curl:x64-windows --quiet
+          echo "VCPKG_ROOT=${VCPKG_ROOT}" >> $env:GITHUB_ENV
+
+      - name: Configure (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: cmake -S src -B build ${{ matrix.cmake_args }}
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S src -B build ${{ matrix.cmake_args }} -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release ${{ runner.os == 'Windows' && '-- -v:minimal' || '' }}
+
+      - name: Smoke test (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: ${{ matrix.binary }} --version
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        run: ${{ matrix.binary }} --version
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.binary }}
+          if-no-files-found: error
+
+  create-release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate release notes
+        run: |
+          echo "## BiliTicketMonitor ${{ github.ref_name }}" > release-notes.md
+          echo "" >> release-notes.md
+          echo "### Downloads" >> release-notes.md
+          echo "" >> release-notes.md
+          for f in artifacts/*/*; do
+            name=$(basename "$f")
+            size=$(ls -lh "$f" | awk '{print $5}')
+            echo "- \`$name\` ($size)" >> release-notes.md
+          done
+          echo "" >> release-notes.md
+          cat CHANGELOG.md >> release-notes.md 2>/dev/null || true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          files: artifacts/*/*
