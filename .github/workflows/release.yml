@@ -106,16 +106,17 @@ jobs:
 
       - name: Prepare release files (rename with platform names)
         run: |
-          # 创建发布目录，用平台名重命名文件
           mkdir -p release_files
           for dir in artifacts/*/; do
             platform=$(basename "$dir")
+            # 去掉 artifact 名称中自带的 .exe（Windows 的 artifact 文件夹名自带）
+            platform_clean="${platform%.exe}"
             for f in "$dir"*; do
               ext=""
               case "$platform" in
                 *win*) ext=".exe" ;;
               esac
-              cp "$f" "release_files/${platform}${ext}"
+              cp "$f" "release_files/${platform_clean}${ext}"
             done
           done
           echo "=== Release files ==="
