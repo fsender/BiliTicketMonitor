@@ -49,14 +49,16 @@ options:
   --id ID               要监控的票务ID. BW2025 为 102194, BML2025 为 102626.
   --ticket-no TICKET_NO
                         需要蹲票的票种代号, 0表示不蹲票, 1~票种个数代表蹲对应的票
-  --interval INTERVAL   刷新间隔 单位秒. 默认为0.3s. 作者未测试设为0.3s以下的检测速率会导致什么后果.
-                        本程序不需要登录b站, 但同时运行本程序与BHYG, 较低间隔仍可能导致同IP风控. 多机模式
-                        (本程序和BHYG不在同一IP地址) 下, 可以适当降低到更低的刷新间隔.
+  --interval INTERVAL   刷新间隔 单位秒. 默认为0.3s.
   --script SCRIPT       辅助脚本, 输入批处理文件 (*.bat, *.sh, *.ps1) 的路径后,
                         如果发现监视的票种如果有余票, 则会启动该批处理脚本.
-                        仓库内自带的 bhyg.bat 文件可以用于启动 bhyg , 只需要将本程序 bhyg 目录内即可使用
+  --target SCREEN_ID:SKU_ID:LABEL
+                        多目标监控模式 (可多次使用). 格式: 场次ID:票种ID:标签.
+                        例如: --target 332913:857648:Day1 --target 332914:857522:Day2
+  --bark-key KEY        启用Bark推送通知并设置Key.
+  --bark-server URL     Bark服务器地址 (默认: https://api.day.app).
+  --no-bark             禁用Bark推送通知.
 
-                        当前 暂不支持网页端抢票 (web), 只支持 BHYG By ZianTT (bhyg)
                         当配合 BHYG 使用时, 请先在BHYG中确定需要购买的票种, 在 BHYG
                         预填写抢票票种和购买人等参数, 并把抢票延时设置为 1 毫秒, 然后选择 '开始抢票' 选项,
                         直到弹出 '请确认信息，以进入抢票进程 (倒计时) ' 的时候, 以正常模式运行该脚本
@@ -105,18 +107,44 @@ int main(int argc, const char **argv) {
         else{ //argv >=3
             //处理argc参数, 最后写入Conf文件并开始运行
             for(int i=0;i<argc/2;i++){
-                if(string(argv[i*2+1]) == string("--id")){
-                    long tid = atoi(argv[i*2+2]);
+                string arg = string(argv[i*2+1]);
+                string val = string(argv[i*2+2]);
+                if(arg == string("--id")){
+                    long tid = atoi(val.c_str());
                     Config::TICKET_ID = to_string(tid);
                 }
-                if(string(argv[i*2+1]) == string("--ticket-no")){
-                    Config::TICKETNO = atoi(argv[i*2+2]);
+                else if(arg == string("--ticket-no")){
+                    Config::TICKETNO = atoi(val.c_str());
                 }
-                if(string(argv[i*2+1]) == string("--interval")){ //间隔
-                    Config::REFRESH_INTERVAL = atoi(argv[i*2+2]);
+                else if(arg == string("--interval")){ //间隔
+                    Config::REFRESH_INTERVAL = atoi(val.c_str());
                 }
-                if(string(argv[i*2+1]) == string("--script")){ //脚本bat地址
-                    Config::BATPATH = string(argv[i*2+2]);
+                else if(arg == string("--script")){ //脚本bat地址
+                    Config::BATPATH = val;
+                }
+                else if(arg == string("--target")){
+                    // 格式: screen_id:sku_id:label
+                    size_t c1 = val.find(':');
+                    size_t c2 = val.rfind(':');
+                    if (c1 != string::npos && c2 != string::npos && c1 != c2) {
+                        TargetConfig tc;
+                        tc.screen_id = val.substr(0, c1);
+                        tc.sku_id = val.substr(c1 + 1, c2 - c1 - 1);
+                        tc.label = val.substr(c2 + 1);
+                        if (isValidTargetConfig(tc)) {
+                            Config::TARGETS.push_back(tc);
+                        }
+                    }
+                }
+                else if(arg == string("--bark-key")){
+                    Config::BARK_KEY = val;
+                    Config::BARK_ENABLED = !val.empty();
+                }
+                else if(arg == string("--bark-server")){
+                    Config::BARK_SERVER = val;
+                }
+                else if(arg == string("--no-bark")){
+                    Config::BARK_ENABLED = false;
                 }
             }
             config.writeConf();

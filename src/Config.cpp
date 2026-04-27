@@ -170,6 +170,37 @@ bool Config::checkconf(){
             }
             API_BASE=lines[5];
             HEADERS[0]=lines[6];
+            
+            // 解析扩展配置 (第8行起, 可选)
+            if (lines.size() >= 8) {
+                BARK_KEY = trim(lines[7]);
+                BARK_ENABLED = !BARK_KEY.empty();
+            }
+            if (lines.size() >= 9) {
+                try {
+                    int target_count = stoi(trim(lines[8]));
+                    if (target_count > 0 && lines.size() >= (size_t)(9 + target_count)) {
+                        TARGETS.clear();
+                        for (int ti = 0; ti < target_count; ti++) {
+                            string tl = trim(lines[9 + ti]);
+                            // 格式: screen_id,sku_id,label (逗号分隔)
+                            size_t c1 = tl.find(',');
+                            size_t c2 = tl.rfind(',');
+                            if (c1 != string::npos && c2 != string::npos && c1 != c2) {
+                                TargetConfig tc;
+                                tc.screen_id = tl.substr(0, c1);
+                                tc.sku_id = tl.substr(c1 + 1, c2 - c1 - 1);
+                                tc.label = tl.substr(c2 + 1);
+                                if (isValidTargetConfig(tc)) {
+                                    TARGETS.push_back(tc);
+                                }
+                            }
+                        }
+                    }
+                } catch (...) {
+                    // targets解析失败不是致命错误，保持TARGETS为空
+                }
+            }
         }
     } else {
         configValid = false;
@@ -238,17 +269,27 @@ void Config::readconf(){
 }
 
 void Config::writeConf(){
-    // 保存新的配置文件
+    // 保存新的配置文件 (扩展格式: 第8行起为可选扩展配置)
     ofstream newConfig("config.txt");
     if (newConfig.is_open()) {
         newConfig << TICKET_ID << endl
-                    << TICKETNO << endl
-                    << BATPATH << endl
-                    << REFRESH_INTERVAL << endl
-                    << TIMEOUT << endl
-                    << API_BASE << endl
-                    << HEADERS[0] << endl
-                    << FILE_DATA << endl;
+                  << TICKETNO << endl
+                  << BATPATH << endl
+                  << REFRESH_INTERVAL << endl
+                  << TIMEOUT << endl
+                  << API_BASE << endl
+                  << HEADERS[0] << endl;
+        // 第8行: Bark Key (空=禁用)
+        newConfig << BARK_KEY << endl;
+        // 第9行: 目标数量
+        newConfig << TARGETS.size() << endl;
+        // 第10+行: 每个目标一行 screen_id,sku_id,label
+        for (const auto& target : TARGETS) {
+            newConfig << target.screen_id << ","
+                      << target.sku_id << ","
+                      << target.label << endl;
+        }
+        newConfig << FILE_DATA << endl;
         newConfig.close();
         cout << "配置已保存到 config.txt" << endl;
     } else {

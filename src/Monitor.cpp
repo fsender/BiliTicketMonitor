@@ -1,7 +1,11 @@
 #include "Monitor.hpp"
 
 void Monitor::start() {
-    run_monitor();
+    if (!Config::TARGETS.empty()) {
+        run_multi_monitor();
+    } else {
+        run_monitor();
+    }
 }
 
 // 显示表格（带颜色和优化布局）
@@ -135,22 +139,95 @@ void Monitor::handle_error(const string& msg, bool critical) {
     if (critical) stop = true;
 }
 
-// Stub: multi-target mode (Task 6)
+// 多目标并发监控模式
 void Monitor::run_multi_monitor() {
-    // TODO: Task 6 will implement this
-    cout << "多目标监控模式未实现" << endl;
+    size_t num_targets = Config::TARGETS.size();
+    ThreadPool pool(num_targets);
+    
+    // 启动时调用getV2获取项目信息 (仅用于展示)
+    try {
+        HttpResponse info_resp = http_get(Config::API_URL, Config::HEADERS);
+        if (info_resp.status_code == 200) {
+            auto [name, tickets] = process_data(info_resp.data);
+            if (!name.empty()) {
+                cout << "\n\033[1m" << name << "\033[0m";
+                cout << " | 监控目标: " << num_targets << " 个\n";
+                cout << string(50, '=') << endl;
+            }
+        }
+    } catch (...) {
+        // getV2失败不影响stock/check监控
+    }
+    
+    while (!stop) {
+        // 显示当前时间和请求计数
+        cout << "\033[32m当前时间: " << get_ms_timestamp() << " | 已发送: " << request_count << " 次\033[0m\r" << flush;
+        
+        // 并发检查所有目标的库存
+        vector<future<int>> futures;
+        for (const auto& target : Config::TARGETS) {
+            futures.push_back(pool.enqueue([this, &target]() {
+                request_count++;
+                return check_stock(target.screen_id, target.sku_id);
+            }));
+        }
+        
+        // 串行处理结果 (按TARGETS顺序输出)
+        for (size_t i = 0; i < num_targets; i++) {
+            if (stop) break;
+            try {
+                int code = futures[i].get();
+                const auto& target = Config::TARGETS[i];
+                auto& last = last_stock_status[target.screen_id];
+                
+                if (code != -1 && code != last) {
+                    print_status_change(target.label, code);
+                    last = code;
+                    healthy = true;
+                    
+                    // 触发Bark推送通知
+                    string label_copy = target.label;
+                    if (code == 3) {
+                        ThreadPool bark_pool(1);
+                        bark_pool.enqueue([label_copy]() {
+                            BarkClient::send("有库存 - " + label_copy,
+                                "赶紧去抢票！项目ID: " + Config::TICKET_ID, true);
+                        });
+                    } else if (code == 1) {
+                        ThreadPool bark_pool(1);
+                        bark_pool.enqueue([label_copy]() {
+                            BarkClient::send("暂时售罄 - " + label_copy,
+                                "可能有补票机会。项目ID: " + Config::TICKET_ID, false);
+                        });
+                    }
+                }
+            } catch (...) {
+                // 跳过失败的检查
+            }
+        }
+        
+        this_thread::sleep_for(chrono::milliseconds(Config::REFRESH_INTERVAL));
+    }
 }
 
+// 检查单个目标库存
 int Monitor::check_stock(const string& screen_id, const string& sku_id) {
-    // TODO: Task 6 will implement this
-    return -1;
+    string json_body = json_build_stock_check(Config::TICKET_ID, sku_id, screen_id);
+    string url = "https://show.bilibili.com/api/ticket/stock/check";
+    HttpResponse resp = http_post(url, json_body, Config::HEADERS);
+    if (resp.status_code != 200) return -1;
+    return parse_stock_status(resp.data);
 }
 
+// 线程安全输出库存状态变化
 void Monitor::print_status_change(const string& label, int code) {
-    // TODO: Task 6 will implement this
+    string color = stock_status_color(code);
+    string text = stock_status_to_string(code);
+    lock_guard<mutex> lock(print_mutex);
+    cout << "[" << get_ms_timestamp() << "] [" << label << "] " << color << text << "\033[0m" << endl;
 }
 
+// 毫秒时间戳 (直接使用全局函数)
 string Monitor::get_ms_time() {
-    // TODO: Task 6 will implement this
-    return "";
+    return get_ms_timestamp();
 }
