@@ -114,16 +114,15 @@ bool Config::checkconf() {
             string tl = trim(lines[idx]);
             if (tl.empty()) { ti--; continue; }
             size_t sp = tl.find(' ');
-            if (sp != string::npos) {
-                string no_str = tl.substr(0, sp);
-                string cmd = tl.substr(sp + 1);
-                if (isValidPositiveInteger(no_str)) {
-                    MonitoredTargetConfig mtc;
-                    mtc.ticket_no = stoi(no_str);
-                    mtc.script_command = cmd;
-                    MONITORED.push_back(mtc);
-                }
-            }
+            MonitoredTargetConfig mtc;
+            if (sp != string::npos && isValidPositiveInteger(tl.substr(0, sp))) {
+                mtc.ticket_no = stoi(tl.substr(0, sp));
+                mtc.script_command = tl.substr(sp + 1);
+            } else if (isValidPositiveInteger(tl)) {
+                mtc.ticket_no = stoi(tl);
+                mtc.script_command = "";
+            } else continue;
+            MONITORED.push_back(mtc);
         }
     }
 

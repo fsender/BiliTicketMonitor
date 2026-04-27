@@ -68,17 +68,21 @@ void Monitor::start() {
     // 根据配置选择要监控的目标
     Config::TARGETS.clear();
     target_scripts.clear();
-    if (Config::MONITORED.empty()) {
+    monitored_flags.clear();
+    bool has_configured = !Config::MONITORED.empty();
+    if (!has_configured) {
         // 监控全部，无自定义脚本
         Config::TARGETS = all_tickets;
         target_scripts.assign(Config::TARGETS.size(), "");
+        monitored_flags.assign(Config::TARGETS.size(), false);
     } else {
         // 只监控配置中指定的目标 (通过 ticket_no 索引)
         for (const auto& mt : Config::MONITORED) {
-            int idx = mt.ticket_no - 1; // 表格从1开始编号
+            int idx = mt.ticket_no - 1;
             if (idx >= 0 && idx < (int)all_tickets.size()) {
                 Config::TARGETS.push_back(all_tickets[idx]);
                 target_scripts.push_back(mt.script_command);
+                monitored_flags.push_back(true); // 高亮
             }
         }
         if (Config::TARGETS.empty()) {
@@ -86,7 +90,7 @@ void Monitor::start() {
             return;
         }
     }
-
+    
     run_multi_monitor();
 }
 
@@ -137,7 +141,11 @@ void Monitor::run_multi_monitor() {
             auto& [label, code] = current_status[i];
             string color = stock_status_color(code);
             string text = code == -1 ? "查询失败" : stock_status_to_string(code);
-            cout << format("\033[33m[{:>2}]\033[0m  ", i + 1) << label;
+            // 被选中的目标用紫红色粗体高亮
+            if (monitored_flags[i])
+                cout << format("\033[35m\033[1m[{:>2}]  ", i + 1) << label << "\033[0m";
+            else
+                cout << format("\033[33m[{:>2}]\033[0m  ", i + 1) << label;
             cout << "\033[" << col_gap << "G" << color << text << "\033[0m" << endl;
         }
         last_status_col = col_gap;
@@ -202,7 +210,10 @@ void Monitor::run_multi_monitor() {
                 string color = stock_status_color(code);
                 string text = code == -1 ? "查询失败" : stock_status_to_string(code);
                 cout << "\033[1A\033[K";
-                cout << format("\033[33m[{:>2}]\033[0m  ", i + 1) << label;
+                if (monitored_flags[i])
+                    cout << format("\033[35m\033[1m[{:>2}]  ", i + 1) << label << "\033[0m";
+                else
+                    cout << format("\033[33m[{:>2}]\033[0m  ", i + 1) << label;
                 cout << "\033[" << last_status_col << "G" << color << text << "\033[0m" << endl;
             }
             cout << "\033[u" << flush;

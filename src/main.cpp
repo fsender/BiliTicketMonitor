@@ -63,30 +63,24 @@ int main(int argc, const char **argv) {
     
     clear_screen();
     Config config;
-    if(argc == 1){
-        if(!config.checkconf()) {
-            show_welcome();
-            config.readconf();
-        }
+    // 先读取配置文件
+    if(!config.checkconf()) {
+        show_welcome();
+        config.readconf();
     }
+    
+    // 再用CLI参数覆盖
     if(argc > 1){
-        if(argc == 2){
-            string strtrim = trim(string(argv[1]));
-            if(strtrim == string("-h") || strtrim == string("--help")){
-                cout << help << endl;
-                return 0;
-            }
-            else if(strtrim == string("-v") || strtrim == string("--version")){
-                cout << version << endl;
-                return 0;
-            }
-            else {
-                cout << "参数太少, 已无视参数." << endl;
-                show_welcome();
-                if(!config.checkconf()) config.readconf();
-            }
+        string first = trim(string(argv[1]));
+        if(argc == 2 && (first == "-h" || first == "--help")){
+            cout << help << endl;
+            return 0;
         }
-        else{
+        if(argc == 2 && (first == "-v" || first == "--version")){
+            cout << version << endl;
+            return 0;
+        }
+        if(argc > 2){
             for(int i=1;i<argc;i++){
                 string arg = string(argv[i]);
                 if(arg == string("--id") && i+1 < argc){
