@@ -19,14 +19,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Linux x86_64
-            runner: ubuntu-22.04
+            - name: Linux x86_64
+            runner: ubuntu-24.04
             artifact: BiliTicketMonitor-linux-x86_64
             cmake_args: -DCMAKE_BUILD_TYPE=Release
             binary: build/bin/BiliTicketMonitor
 
           - name: Linux ARM64
-            runner: ubuntu-22.04-arm
+            runner: ubuntu-24.04-arm
             artifact: BiliTicketMonitor-linux-arm64
             cmake_args: -DCMAKE_BUILD_TYPE=Release
             binary: build/bin/BiliTicketMonitor
@@ -50,11 +50,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq software-properties-common
-          sudo add-apt-repository -y -n ppa:ubuntu-toolchain-r/test
-          sudo apt-get install -y -qq libcurl4-openssl-dev cmake g++-13
-          echo "CXX=g++-13" >> $GITHUB_ENV
-          echo "CC=gcc-13" >> $GITHUB_ENV
+          sudo apt-get install -y -qq libcurl4-openssl-dev cmake g++
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
@@ -77,7 +73,7 @@ jobs:
         run: cmake -S src -B build ${{ matrix.cmake_args }} -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
-        run: cmake --build build --config Release ${{ runner.os == 'Windows' && '-- -v:minimal' || '' }}
+        run: cmake --build build --config Release
 
       - name: Smoke test (Linux/macOS)
         if: runner.os != 'Windows'
