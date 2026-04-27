@@ -8,7 +8,7 @@
  */
 
 #define VERSION "2.0.0"
-#define INIT_DELAY_SEC 5
+#define INIT_DELAY_SEC 1
 
 #include <iostream>
 #include <string>

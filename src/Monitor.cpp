@@ -148,35 +148,36 @@ void Monitor::run_multi_monitor() {
         }
     }
 
-    // 初始表格渲染
-    {
+    // 表格渲染函数
+    auto render_table = [&]() {
         size_t max_label_width = 0;
         for (const auto& [label, code] : current_status) {
             if (label.size() > max_label_width) max_label_width = label.size();
         }
         size_t col_gap = 4 + max_label_width;
+        last_status_col = col_gap;
 
         string title = Config::project_name.empty()
             ? format("B站票务监控器 - {} 个目标", num_targets)
             : format("{} - {} 个目标", Config::project_name, num_targets);
-        cout << "\033[1m" << title << "\033[0m" << endl;
-        cout << "\033[32m更新: " << get_ms_timestamp() << "\033[0m" << endl;
+        cout << "\033[1m" << title << "  \033[32m更新: " << get_ms_timestamp() << "\033[0m" << endl;
         cout << "\033[36mNo.   目标" << string(max_label_width > 7 ? max_label_width - 7 : 0, ' ') << "状态\033[0m" << endl;
         cout << string(col_gap + 8, '-') << endl;
         for (size_t i = 0; i < num_targets; i++) {
             auto& [label, code] = current_status[i];
             string color = stock_status_color(code);
             string text = code == -1 ? "查询失败" : stock_status_to_string(code);
-            // 被选中的目标用紫红色粗体高亮
             if (monitored_flags[i])
                 cout << format("\033[35m\033[1m[{:>2}]  ", i + 1) << label << "\033[0m";
             else
                 cout << format("\033[33m[{:>2}]\033[0m  ", i + 1) << label;
             cout << "\033[" << col_gap << "G" << color << text << "\033[0m" << endl;
         }
-        last_status_col = col_gap;
-        //cout << "\033[" << (num_targets + 1) << "E";
-    }
+        cout  << endl;
+    };
+
+    // 初始渲染
+    render_table();
 
     while (!stop) {
         multi.reuse();  // 重置请求状态，保留 TCP 连接
@@ -230,23 +231,14 @@ void Monitor::run_multi_monitor() {
         }
 
         if (changed) {
-            cout << "\033[s";
-            for (size_t i = 0; i < num_targets; i++) {
-                auto& [label, code] = current_status[i];
-                string color = stock_status_color(code);
-                string text = code == -1 ? "查询失败" : stock_status_to_string(code);
-                cout << "\033[1A\033[K";
-                if (monitored_flags[i])
-                    cout << format("\033[35m\033[1m[{:>2}]  ", i + 1) << label << "\033[0m";
-                else
-                    cout << format("\033[33m[{:>2}]\033[0m  ", i + 1) << label;
-                cout << "\033[" << last_status_col << "G" << color << text << "\033[0m" << endl;
-            }
-            cout << "\033[u" << flush;
+            //clear_screen();
+            cout << "\033[33m监控ID: " << Config::TICKET_ID
+                 << " | 刷新间隔: " << Config::REFRESH_INTERVAL << "ms\033[0m\n";
+            cout << "===============================================================\033[0m" << "\n";
+            render_table();
         }
-
         // 显示当前时间状态行
-        cout << "\033[32m当前时间: " << get_ms_timestamp() << " | 已发送: " << request_count << " 次\033[0m\r" << flush;
+        cout << "\033[32m当前时间: " << get_ms_timestamp() << " | 已发送: " << request_count << " 次\033[0m        \r" << flush;
 
         this_thread::sleep_for(chrono::milliseconds(Config::REFRESH_INTERVAL));
     }
