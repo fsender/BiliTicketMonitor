@@ -106,23 +106,24 @@ int main(int argc, const char **argv) {
         }
         else{ //argv >=3
             //处理argc参数, 最后写入Conf文件并开始运行
-            for(int i=0;i<argc/2;i++){
-                string arg = string(argv[i*2+1]);
-                string val = string(argv[i*2+2]);
-                if(arg == string("--id")){
-                    long tid = atoi(val.c_str());
+            for(int i=1;i<argc;i++){
+                string arg = string(argv[i]);
+                
+                if(arg == string("--id") && i+1 < argc){
+                    long tid = atoi(argv[++i]);
                     Config::TICKET_ID = to_string(tid);
                 }
-                else if(arg == string("--ticket-no")){
-                    Config::TICKETNO = atoi(val.c_str());
+                else if(arg == string("--ticket-no") && i+1 < argc){
+                    Config::TICKETNO = atoi(argv[++i]);
                 }
-                else if(arg == string("--interval")){ //间隔
-                    Config::REFRESH_INTERVAL = atoi(val.c_str());
+                else if(arg == string("--interval") && i+1 < argc){
+                    Config::REFRESH_INTERVAL = atoi(argv[++i]);
                 }
-                else if(arg == string("--script")){ //脚本bat地址
-                    Config::BATPATH = val;
+                else if(arg == string("--script") && i+1 < argc){
+                    Config::BATPATH = string(argv[++i]);
                 }
-                else if(arg == string("--target")){
+                else if(arg == string("--target") && i+1 < argc){
+                    string val = string(argv[++i]);
                     // 格式: screen_id:sku_id:label
                     size_t c1 = val.find(':');
                     size_t c2 = val.rfind(':');
@@ -136,15 +137,18 @@ int main(int argc, const char **argv) {
                         }
                     }
                 }
-                else if(arg == string("--bark-key")){
-                    Config::BARK_KEY = val;
-                    Config::BARK_ENABLED = !val.empty();
+                else if(arg == string("--bark-key") && i+1 < argc){
+                    Config::BARK_KEY = string(argv[++i]);
+                    Config::BARK_ENABLED = !Config::BARK_KEY.empty();
                 }
-                else if(arg == string("--bark-server")){
-                    Config::BARK_SERVER = val;
+                else if(arg == string("--bark-server") && i+1 < argc){
+                    Config::BARK_SERVER = string(argv[++i]);
                 }
                 else if(arg == string("--no-bark")){
                     Config::BARK_ENABLED = false;
+                }
+                else if(arg == string("--bark-test")){
+                    // 将在curl初始化后执行
                 }
             }
             config.writeConf();
@@ -153,10 +157,27 @@ int main(int argc, const char **argv) {
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
     
+    // 检查是否有--bark-test参数
+    bool bark_test_mode = false;
+    for (int i = 1; i < argc; i++) {
+        if (string(argv[i]) == "--bark-test") {
+            bark_test_mode = true;
+            break;
+        }
+    }
+    
     //clear_screen();
     cout << "\n\033[33m监控ID: " << Config::TICKET_ID 
          << " | 刷新间隔: " << Config::REFRESH_INTERVAL << "ms\n";
     cout << "===============================================================\033[0m" << "\n";
+    
+    if (bark_test_mode) {
+        BarkClient::test();
+        cout << "\n按回车键退出程序...\n";
+        cin.ignore();
+        curl_global_cleanup();
+        return 0;
+    }
     
     Monitor monitor;
     monitor.start();

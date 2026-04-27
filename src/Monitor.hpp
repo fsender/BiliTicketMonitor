@@ -7,6 +7,7 @@
 #include <thread>
 #include <chrono>
 #include <future>
+#include <atomic>
 #include <iostream>
 #include "Config.hpp"
 #include "HttpClient.hpp"
@@ -23,7 +24,7 @@ private:
     bool selling;
     vector<vector<string>> last_data;
     unordered_map<string, int> last_stock_status;
-    int request_count;
+    atomic<int> request_count;
     mutex print_mutex;
 
 public:
