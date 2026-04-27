@@ -8,10 +8,10 @@ const char* FILE_DATA = R"(
 # 第三行为API超时时间, 单位ms
 # 第四行为请求标识符 (User-Agent)
 # 第五行为Bark推送Key (空=禁用)
-# 第六行为监控目标数量 (0=监控全部自动发现的票种)
+# 第六行为监控目标数量 (>=0: 监控全部票种+高亮有脚本的; <0: 仅监控选定的)
 # 第七行起: 每行格式为 "序号 命令", 序号为启动时表格中显示的编号
 #          命令中的 {screen_id} 和 {sku_id} 会被替换为实际值
-# 示例: "5 python grab_ticket.py --screen {screen_id} --sku {sku_id}"
+#          示例: "5 python grab_ticket.py --screen {screen_id} --sku {sku_id}"
 )";
 
 const int DEFAULT_REFRESH = 300;
@@ -25,6 +25,7 @@ int Config::TIMEOUT = DEFAULT_TIMEOUT;
 vector<string> Config::HEADERS = { DEFAULT_HEADER };
 vector<TargetConfig> Config::TARGETS;
 vector<MonitoredTargetConfig> Config::MONITORED;
+bool Config::MONITOR_ALL = true;
 bool Config::BARK_ENABLED = false;
 string Config::BARK_KEY = "";
 string Config::BARK_SERVER = "https://api.day.app";
@@ -37,7 +38,7 @@ string replace_vars(const string& tmpl, const string& screen_id, const string& s
     while ((pos = result.find("{screen_id}")) != string::npos)
         result.replace(pos, 11, screen_id);
     while ((pos = result.find("{sku_id}")) != string::npos)
-        result.replace(pos, 7, sku_id);
+        result.replace(pos, 8, sku_id);
     return result;
 }
 
@@ -104,11 +105,20 @@ bool Config::checkconf() {
     BARK_KEY = trim(lines[idx++]);
     BARK_ENABLED = !BARK_KEY.empty();
 
-    // Line 6: Target count
+    // Line 6: Target count (>=0: 监控全部+高亮, <0: 仅监控选定的)
     MONITORED.clear();
+    MONITOR_ALL = true;
     if (idx < (int)lines.size()) {
+        string count_str = trim(lines[idx]);
         int target_count = 0;
-        try { target_count = stoi(trim(lines[idx])); } catch (...) {}
+        if (!count_str.empty()) {
+            bool negative = count_str[0] == '-';
+            if (negative) {
+                MONITOR_ALL = false;
+                count_str = count_str.substr(1);
+            }
+            try { target_count = stoi(count_str); } catch (...) {}
+        }
         idx++;
         for (int ti = 0; ti < target_count && idx < (int)lines.size(); ti++, idx++) {
             string tl = trim(lines[idx]);
@@ -162,7 +172,7 @@ void Config::writeConf() {
                   << TIMEOUT << endl
                   << HEADERS[0] << endl
                   << BARK_KEY << endl
-                  << MONITORED.size() << endl;
+                  << (MONITOR_ALL ? "" : "-") << MONITORED.size() << endl;
         for (const auto& mt : MONITORED) {
             newConfig << mt.ticket_no << " " << mt.script_command << endl;
         }

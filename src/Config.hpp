@@ -35,6 +35,7 @@ public:
     static vector<string> HEADERS;
     static vector<TargetConfig> TARGETS;             // 自动发现的全部票种
     static vector<MonitoredTargetConfig> MONITORED;  // config.txt中配置的要监控的目标
+    static bool MONITOR_ALL;                         // true=监控全部+高亮, false=仅监控选定的
     static bool BARK_ENABLED;
     static string BARK_KEY;
     static string BARK_SERVER;

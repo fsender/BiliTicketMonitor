@@ -69,20 +69,27 @@ void Monitor::start() {
     Config::TARGETS.clear();
     target_scripts.clear();
     monitored_flags.clear();
-    bool has_configured = !Config::MONITORED.empty();
-    if (!has_configured) {
-        // 监控全部，无自定义脚本
+    
+    if (Config::MONITOR_ALL) {
+        // 监视全部票种, 有配置脚本的票种高亮执行
         Config::TARGETS = all_tickets;
         target_scripts.assign(Config::TARGETS.size(), "");
         monitored_flags.assign(Config::TARGETS.size(), false);
+        for (const auto& mt : Config::MONITORED) {
+            int idx = mt.ticket_no - 1;
+            if (idx >= 0 && idx < (int)all_tickets.size()) {
+                target_scripts[idx] = mt.script_command;
+                monitored_flags[idx] = !mt.script_command.empty();
+            }
+        }
     } else {
-        // 只监控配置中指定的目标 (通过 ticket_no 索引)
+        // 仅监控选定的票种 (不高亮, 因为全都是)
         for (const auto& mt : Config::MONITORED) {
             int idx = mt.ticket_no - 1;
             if (idx >= 0 && idx < (int)all_tickets.size()) {
                 Config::TARGETS.push_back(all_tickets[idx]);
                 target_scripts.push_back(mt.script_command);
-                monitored_flags.push_back(true); // 高亮
+                monitored_flags.push_back(false); // 不高亮
             }
         }
         if (Config::TARGETS.empty()) {
