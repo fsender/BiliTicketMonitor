@@ -26,12 +26,12 @@ protected:
 public:
     static string TICKET_ID;
     static string BATPATH;
+    static string project_name;
     static int REFRESH_INTERVAL;
     static int TIMEOUT;
     static string API_BASE;
     static string API_URL;
     static vector<string> HEADERS;
-    static int TICKETNO;
     static vector<TargetConfig> TARGETS;
     static bool BARK_ENABLED;
     static string BARK_KEY;
