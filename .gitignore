@@ -43,3 +43,4 @@
 build
 release
 config.txt
+test_grab/out*.txt
