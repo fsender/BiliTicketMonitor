@@ -4,7 +4,6 @@
 #include <vector>
 #include <curl/curl.h>
 #include "Config.hpp"
-#include "cJSON.h"
 
 using namespace std;
 
@@ -24,31 +23,14 @@ struct HttpResponse {
 };
 
 inline string json_build_stock_check(const string& projectId, const string& skuId, const string& screenId) {
-    cJSON* root = cJSON_CreateObject();
-    if (!root) return "";
-    cJSON_AddStringToObject(root, "projectId", projectId.c_str());
-    cJSON_AddNumberToObject(root, "skuId", stoi(skuId));
-    cJSON_AddNumberToObject(root, "screenId", stoi(screenId));
-    char* json_str = cJSON_PrintUnformatted(root);
-    string result(json_str);
-    free(json_str);
-    cJSON_Delete(root);
-    return result;
+    return "{\"projectId\":\"" + projectId + "\",\"skuId\":" + skuId + ",\"screenId\":" + screenId + "}";
 }
 
 inline string json_build_bark_payload(const string& title, const string& body, const string& group, bool is_stock) {
-    cJSON* root = cJSON_CreateObject();
-    if (!root) return "";
-    cJSON_AddStringToObject(root, "title", title.c_str());
-    cJSON_AddStringToObject(root, "body", body.c_str());
-    cJSON_AddStringToObject(root, "group", group.c_str());
-    cJSON_AddStringToObject(root, "level", is_stock ? "critical" : "active");
-    if (is_stock) cJSON_AddStringToObject(root, "sound", "alarm");
-    char* json_str = cJSON_PrintUnformatted(root);
-    string result(json_str);
-    free(json_str);
-    cJSON_Delete(root);
-    return result;
+    string json = "{\"title\":\"" + title + "\",\"body\":\"" + body + "\",\"group\":\"" + group + "\",\"level\":\"" + (is_stock ? "critical" : "active") + "\"";
+    if (is_stock) json += ",\"sound\":\"alarm\"";
+    json += "}";
+    return json;
 }
 
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {

@@ -1,48 +1,49 @@
 #include "Monitor.hpp"
+#include "simdjson.h"
+#include "HttpMulti.hpp"
+
+// 解析stock/check响应中的stockStatus字段
+static int parse_stock_status(const string& json_str) {
+    simdjson::padded_string ps(json_str);
+    simdjson::ondemand::parser parser;
+    auto doc = parser.iterate(ps);
+    auto stock = doc["data"]["stockStatus"];
+    if (stock.error()) return -1;
+    uint64_t val;
+    if (stock.get_uint64().get(val)) return -1;
+    return (int)val;
+}
 
 // 从getV2响应中提取项目名称和所有票种目标
 static pair<string, vector<TargetConfig>> discover_from_getv2(const string& json_str) {
     vector<TargetConfig> targets;
     string project_name;
-    cJSON* root = cJSON_Parse(json_str.c_str());
-    if (!root) return {project_name, targets};
-    cJSON* data = cJSON_GetObjectItemCaseSensitive(root, "data");
-    if (data) {
-        cJSON* name_item = cJSON_GetObjectItemCaseSensitive(data, "name");
-        if (cJSON_IsString(name_item) && name_item->valuestring) project_name = name_item->valuestring;
-        cJSON* screen_list = cJSON_GetObjectItemCaseSensitive(data, "screen_list");
-        if (screen_list && cJSON_IsArray(screen_list)) {
-            for (int si = 0; si < cJSON_GetArraySize(screen_list); si++) {
-                cJSON* screen = cJSON_GetArrayItem(screen_list, si);
-                if (!screen) continue;
-                cJSON* sid = cJSON_GetObjectItemCaseSensitive(screen, "id");
-                int screen_id = cJSON_IsNumber(sid) ? (int)sid->valuedouble : 0;
-                cJSON* ticket_list = cJSON_GetObjectItemCaseSensitive(screen, "ticket_list");
-                if (ticket_list && cJSON_IsArray(ticket_list)) {
-                    for (int tj = 0; tj < cJSON_GetArraySize(ticket_list); tj++) {
-                        cJSON* ticket = cJSON_GetArrayItem(ticket_list, tj);
-                        if (!ticket) continue;
-                        cJSON* id_item = cJSON_GetObjectItemCaseSensitive(ticket, "id");
-                        int sku_id = cJSON_IsNumber(id_item) ? (int)id_item->valuedouble : 0;
-                        string sn = "", desc = "";
-                        cJSON* i1 = cJSON_GetObjectItemCaseSensitive(ticket, "screen_name");
-                        if (cJSON_IsString(i1) && i1->valuestring) sn = i1->valuestring;
-                        cJSON* i2 = cJSON_GetObjectItemCaseSensitive(ticket, "desc");
-                        if (cJSON_IsString(i2) && i2->valuestring) desc = i2->valuestring;
-                        if (screen_id > 0 && sku_id > 0) {
-                            TargetConfig tc;
-                            tc.screen_id = to_string(screen_id);
-                            tc.sku_id = to_string(sku_id);
-                            tc.label = sn;
-                            if (!desc.empty()) tc.label += " " + desc;
-                            targets.push_back(tc);
-                        }
-                    }
-                }
+    simdjson::padded_string ps(json_str);
+    simdjson::ondemand::parser parser;
+    auto doc = parser.iterate(ps);
+    std::string_view sv;
+    if (!doc["data"]["name"].get_string().get(sv)) project_name = sv;
+    simdjson::ondemand::array screens;
+    if (doc["data"]["screen_list"].get_array().get(screens)) return {project_name, targets};
+    for (auto screen : screens) {
+        uint64_t screen_id = 0; auto _ec1 = screen["id"].get_uint64().get(screen_id); (void)_ec1;
+        simdjson::ondemand::array tickets;
+        if (screen["ticket_list"].get_array().get(tickets)) continue;
+        for (auto ticket : tickets) {
+            uint64_t sku_id = 0; auto _ec2 = ticket["id"].get_uint64().get(sku_id); (void)_ec2;
+            string sn, desc; std::string_view tv;
+            if (!ticket["screen_name"].get_string().get(tv)) sn = tv;
+            if (!ticket["desc"].get_string().get(tv)) desc = tv;
+            if (screen_id > 0 && sku_id > 0) {
+                TargetConfig tc;
+                tc.screen_id = to_string(screen_id);
+                tc.sku_id = to_string(sku_id);
+                tc.label = sn;
+                if (!desc.empty()) tc.label += " " + desc;
+                targets.push_back(tc);
             }
         }
     }
-    cJSON_Delete(root);
     return {project_name, targets};
 }
 
@@ -109,23 +110,30 @@ void Monitor::handle_error(const string& msg, bool critical) {
 
 void Monitor::run_multi_monitor() {
     size_t num_targets = Config::TARGETS.size();
-    ThreadPool pool(num_targets);
+    const string stock_url = "https://show.bilibili.com/api/ticket/stock/check";
     vector<pair<string, int>> current_status;
+    current_status.resize(num_targets);
 
     // 首次查询所有目标获取初始状态
     {
-        vector<future<int>> init_futures;
-        for (const auto& target : Config::TARGETS) {
-            init_futures.push_back(pool.enqueue([this, target]() {
-                request_count++;
-                return check_stock(target.screen_id, target.sku_id);
-            }));
-        }
+        HttpMulti multi;
         for (size_t i = 0; i < num_targets; i++) {
-            int code = -1;
-            try { code = init_futures[i].get(); } catch (...) {}
-            current_status.push_back({Config::TARGETS[i].label, code});
-            last_stock_status[Config::TARGETS[i].screen_id] = code;
+            const auto& target = Config::TARGETS[i];
+            string body = json_build_stock_check(Config::TICKET_ID, target.sku_id, target.screen_id);
+            multi.add_post((int)i, stock_url, body, Config::HEADERS);
+            request_count++;
+        }
+        multi.perform();
+        while (!multi.all_done()) {
+            multi.wait(50);
+            multi.perform();
+            for (auto* req : multi.get_completed()) {
+                int idx = req->target_idx;
+                int code = (req->response.status_code == 200)
+                    ? parse_stock_status(req->response.data) : -1;
+                current_status[idx] = {Config::TARGETS[idx].label, code};
+                last_stock_status[Config::TARGETS[idx].screen_id] = code;
+            }
         }
     }
 
@@ -160,31 +168,35 @@ void Monitor::run_multi_monitor() {
     }
 
     while (!stop) {
-        vector<future<int>> futures;
-        for (const auto& target : Config::TARGETS) {
-            futures.push_back(pool.enqueue([this, target]() {
-                request_count++;
-                return check_stock(target.screen_id, target.sku_id);
-            }));
+        HttpMulti multi;
+        for (size_t i = 0; i < num_targets; i++) {
+            const auto& target = Config::TARGETS[i];
+            string body = json_build_stock_check(Config::TICKET_ID, target.sku_id, target.screen_id);
+            multi.add_post((int)i, stock_url, body, Config::HEADERS);
+            request_count++;
         }
+        multi.perform();
 
         bool changed = false;
-        for (size_t i = 0; i < num_targets; i++) {
-            if (stop) break;
-            try {
-                int code = futures[i].get();
-                const auto& target = Config::TARGETS[i];
+        while (!multi.all_done() && !stop) {
+            multi.wait(10);
+            multi.perform();
+            for (auto* req : multi.get_completed()) {
+                int idx = req->target_idx;
+                int code = (req->response.status_code == 200)
+                    ? parse_stock_status(req->response.data) : -1;
+                const auto& target = Config::TARGETS[idx];
                 auto& last = last_stock_status[target.screen_id];
 
                 if (code != -1 && code != last) {
                     last = code;
-                    current_status[i].second = code;
+                    current_status[idx].second = code;
                     changed = true;
                     healthy = true;
 
                     // 有库存时执行自定义脚本
-                    if (code == 3 && !target_scripts[i].empty()) {
-                        string cmd = replace_vars(target_scripts[i], target.screen_id, target.sku_id);
+                    if (code == 3 && !target_scripts[idx].empty()) {
+                        string cmd = replace_vars(target_scripts[idx], target.screen_id, target.sku_id);
                         cout << "\033[32m执行: " << cmd << "\033[0m" << endl;
                         system(cmd.c_str());
                     }
@@ -192,20 +204,14 @@ void Monitor::run_multi_monitor() {
                     // Bark推送通知
                     string label_copy = target.label;
                     if (code == 3) {
-                        ThreadPool bp(1);
-                        bp.enqueue([label_copy]() {
-                            BarkClient::send("有库存 - " + label_copy,
-                                "项目ID: " + Config::TICKET_ID, true);
-                        });
+                        BarkClient::send("有库存 - " + label_copy,
+                            "项目ID: " + Config::TICKET_ID, true);
                     } else if (code == 1) {
-                        ThreadPool bp(1);
-                        bp.enqueue([label_copy]() {
-                            BarkClient::send("暂时售罄 - " + label_copy,
-                                "项目ID: " + Config::TICKET_ID, false);
-                        });
+                        BarkClient::send("暂时售罄 - " + label_copy,
+                            "项目ID: " + Config::TICKET_ID, false);
                     }
                 }
-            } catch (...) {}
+            }
         }
 
         if (changed) {
@@ -229,16 +235,4 @@ void Monitor::run_multi_monitor() {
 
         this_thread::sleep_for(chrono::milliseconds(Config::REFRESH_INTERVAL));
     }
-}
-
-int Monitor::check_stock(const string& screen_id, const string& sku_id) {
-    string json_body = json_build_stock_check(Config::TICKET_ID, sku_id, screen_id);
-    string url = "https://show.bilibili.com/api/ticket/stock/check";
-    HttpResponse resp = http_post(url, json_body, Config::HEADERS);
-    if (resp.status_code != 200) return -1;
-    return parse_stock_status(resp.data);
-}
-
-string Monitor::get_ms_time() {
-    return get_ms_timestamp();
 }

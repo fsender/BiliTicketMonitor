@@ -9,7 +9,6 @@
 #include <iostream>
 #include <mutex>
 #include <algorithm>
-#include "cJSON.h"
 #include "Config.hpp"
 
 using namespace std;
@@ -27,22 +26,6 @@ inline const unordered_map<int, string> StockStatusColor = {
     {2, "\033[31m"},
     {3, "\033[32m"},
 };
-
-// ==================== 库存状态解析 ====================
-
-inline int parse_stock_status(const string& json_str) {
-    cJSON* root = cJSON_Parse(json_str.c_str());
-    if (!root) return -1;
-    cJSON* data = cJSON_GetObjectItemCaseSensitive(root, "data");
-    if (!data) { cJSON_Delete(root); return -1; }
-    cJSON* status = cJSON_GetObjectItemCaseSensitive(data, "stockStatus");
-    int result = -1;
-    if (cJSON_IsNumber(status)) {
-        result = (int)status->valuedouble;
-    }
-    cJSON_Delete(root);
-    return result;
-}
 
 // ==================== 工具函数 ====================
 

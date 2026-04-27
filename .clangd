@@ -1,0 +1,6 @@
+Diagnostics:
+  UnusedIncludes: None
+Index:
+  Background: Skip
+InlayHints:
+  Enabled: No

@@ -12,7 +12,6 @@
 #include "Config.hpp"
 #include "HttpClient.hpp"
 #include "Utils.hpp"
-#include "ThreadPool.hpp"
 #include "BarkClient.hpp"
 
 using namespace std;
@@ -37,6 +36,4 @@ public:
 private:
     void run_multi_monitor();
     void handle_error(const string& msg, bool critical);
-    int check_stock(const string& screen_id, const string& sku_id);
-    string get_ms_time();
 };
