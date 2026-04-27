@@ -48,8 +48,11 @@ if(STATIC_BUILD)
     message(STATUS "Build mode: FULL STATIC")
 else()
     # 半静态: 只静态链接 C++ 运行时 (解决 libstdc++ ABI 不兼容)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
-    message(STATUS "Build mode: SEMI-STATIC (libstdc++/libgcc static, rest dynamic)")
+    # 仅适用于 GCC (Linux); Clang (macOS) 不支持 -static-libgcc
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+    endif()
+    message(STATUS "Build mode: SEMI-STATIC")
 endif()
 
 # musl 工具链检测
