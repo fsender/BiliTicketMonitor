@@ -19,7 +19,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_executable(BiliTicketMonitor
     main.cpp
     cJSON.c   # 包含cJSON源代码
-    ../resources/ico-out.o #文件图标 对于Linux用户可能没什么用
 )
 
 # 查找libcurl包

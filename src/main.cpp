@@ -661,8 +661,16 @@ void Monitor::show_table(const string& name, const vector<vector<string>>& ticke
     
     // 打印表格标题（粗体）
     cout << "\033[1m"; // 设置粗体
-    cout << "\033[K\n" << name << "\n";
+    cout << "\033[K\n" << name << " - ";
     cout << "\033[0m"; // 重置样式
+
+    // 显示数据更新时间
+    auto now = chrono::system_clock::now();
+    time_t now_time = chrono::system_clock::to_time_t(now);
+    tm now_tm = *localtime(&now_time);
+    char time_str[20];
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &now_tm);
+    cout << "\033[32m更新: " << time_str << "\033[0m\r" << endl;
     
     // 打印表头（青色）
     cout << "\033[36m"; // 设置青色
@@ -783,8 +791,10 @@ int main(int argc, const char **argv) {
     clear_screen();
     Config config;
     if(argc == 1){
-        show_welcome();
-        if(!config.checkconf()) config.readconf();//读取配置文件
+        if(!config.checkconf()) {
+            show_welcome();
+            config.readconf();//读取配置文件
+        }
     }
     if(argc > 1){
         if(argc == 2){ //只有一个参数
