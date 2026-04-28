@@ -40,7 +40,7 @@ jobs:
           - name: Windows x86_64
             runner: windows-2022
             artifact: BiliTicketMonitor-win-x86_64.exe
-            cmake: -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+            cmake: -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
             binary: build/bin/Release/BiliTicketMonitor.exe
 
     steps:
@@ -58,7 +58,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           $v = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { "C:\vcpkg" }
-          & "$v\vcpkg" install curl:x64-windows
+          & "$v\vcpkg" install curl:x64-windows-static
           echo "VCPKG_ROOT=$v" >> $env:GITHUB_ENV
 
       - name: Configure

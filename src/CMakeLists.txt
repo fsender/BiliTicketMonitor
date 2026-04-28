@@ -68,6 +68,10 @@ target_link_libraries(BiliTicketMonitor PRIVATE
 if(WIN32)
     target_link_libraries(BiliTicketMonitor PRIVATE ws2_32 wininet)
     target_compile_definitions(BiliTicketMonitor PRIVATE CURL_STATICLIB=1 _HAS_STD_BYTE=0)
+    if(STATIC_BUILD)
+        # MSVC 全静态: /MT 替代 /MD
+        set_property(TARGET BiliTicketMonitor PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
 else()
     target_link_libraries(BiliTicketMonitor PRIVATE pthread)
 endif()
