@@ -116,7 +116,7 @@ void Monitor::run_multi_monitor() {
     HttpMulti multi;  // 跨周期复用连接
 
     // 首次查询所有目标获取初始状态
-    {
+    if(num_targets){
         for (size_t i = 0; i < num_targets; i++) {
             const auto& target = Config::TARGETS[i];
             string body = json_build_stock_check(Config::TICKET_ID, target.sku_id, target.screen_id);
@@ -124,7 +124,7 @@ void Monitor::run_multi_monitor() {
         }
         multi.perform();
         while (!multi.all_done()) {
-            multi.wait(1);
+            multi.wait(20);
             multi.perform();
             for (auto* req : multi.get_completed()) {
                 int idx = req->target_idx;
@@ -138,11 +138,15 @@ void Monitor::run_multi_monitor() {
                         cout << "\033[32m执行: " << cmd << "\033[0m" << endl;
                         system(cmd.c_str());
                     } else {
-                        cout << "\033[32m" << Config::TARGETS[idx].label << " 您订阅的票种有票了!\033[0m" << endl;
+                        cout << "\033[32m" << Config::TARGETS[idx].label << " 您关注的票档有票了!\033[0m" << endl;
                     }
                 }
             }
         }
+    }
+    else{
+        cout << "\033[31m所选漫展 \"" << Config::project_name << "\" 无可购买票档!\033[0m" << endl;
+        return;
     }
 
     // 表格渲染函数
@@ -155,7 +159,7 @@ void Monitor::run_multi_monitor() {
         string title = Config::project_name.empty()
             ? format("B站票务监控器 - {} 个目标", num_targets)
             : format("\033[35m{} (\033[33m{}\033[35m) -", Config::project_name, num_targets);
-        cout << "\033[1m" << title << "  \033[32m更新: " << get_ms_timestamp() << " (第 " << request_count << " 次)" << "\033[0m" << endl;
+        cout << "\033[1m" << title << "  \033[32m更新: " << get_ms_timestamp() << " (第 " << request_count/num_targets << " 次)" << "\033[0m" << endl;
         cout << "\033[36mNo.   目标" << string(max_label_width > 7 ? max_label_width - 7 : 0, ' ') << "状态\033[0m" << endl;
         cout << string(col_gap + 8, '-') << endl;
         for (size_t i = 0; i < num_targets; i++) {
@@ -185,8 +189,11 @@ void Monitor::run_multi_monitor() {
         multi.perform();
 
         bool changed = false;
+        int max_lat_us = 0;
         while (!multi.all_done() && !stop) {
             for (auto* req : multi.get_completed()) {
+                auto lat = (int)chrono::duration_cast<chrono::microseconds>(chrono::steady_clock::now() - req->submit_time).count();
+                if (lat > max_lat_us) max_lat_us = lat;
                 int idx = req->target_idx;
                 int code = (req->response.status_code == 200)
                     ? parse_stock_status(req->response.data) : -1;
@@ -215,7 +222,7 @@ void Monitor::run_multi_monitor() {
                 }
             }
             // 等待新数据到达 (阻塞，零CPU开销)
-            multi.wait(50);
+            multi.wait(20);
             multi.perform();
         }
 
@@ -225,7 +232,10 @@ void Monitor::run_multi_monitor() {
             cout << "===============================================================\033[0m" << "\n";
             render_table();
         }
-        cout << "\033[32m当前时间: " << get_ms_timestamp() << " | 已发送: " << request_count << " 次\033[0m        \r" << flush;
+        // 显示周期完成状态
+        int cycles = request_count / (int)num_targets;
+        cout << format("\033[32m当前时间: {} | 已发送: {:>9} 次 | {:>9} 个请求 | 延迟: {:>4} μs\033[0m        \r",
+            get_ms_timestamp(), cycles, request_count.load(), max_lat_us) << flush;
 
         if (Config::REFRESH_INTERVAL)
             this_thread::sleep_for(chrono::milliseconds(Config::REFRESH_INTERVAL));

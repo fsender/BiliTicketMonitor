@@ -24,7 +24,6 @@ private:
     unordered_map<string, int> last_stock_status;
     atomic<int> request_count;
     mutex print_mutex;
-    // 每个目标对应的自定义脚本和是否高亮 (index 与 TARGETS 对应)
     vector<string> target_scripts;
     vector<bool> monitored_flags;
 

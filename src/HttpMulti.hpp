@@ -16,6 +16,7 @@ public:
         bool done = false;
         CURL* easy = nullptr;
         string post_body;
+        chrono::steady_clock::time_point submit_time;
     };
 
     HttpMulti() { multi = curl_multi_init(); }
@@ -34,6 +35,7 @@ public:
         auto* req = new Request();
         req->target_idx = target_idx;
         req->post_body = json_body;
+        req->submit_time = chrono::steady_clock::now();
 
         // 复用空闲 handle 或新建
         if (!free_handles.empty()) {
