@@ -112,7 +112,8 @@ jobs:
       - name: Install dependencies (Alpine static)
         run: |
           apk add --no-cache curl-dev curl-static cmake g++ build-base linux-headers \
-            openssl-libs-static nghttp2-static zlib-static brotli-static zstd-static
+            openssl-libs-static nghttp2-static nghttp3-static zlib-static brotli-static zstd-static \
+            libidn2-static libpsl-dev libunistring-dev
           cmake -S src -B build -DCMAKE_BUILD_TYPE=Release \
             -DSTATIC_BUILD=ON
 
