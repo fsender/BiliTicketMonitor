@@ -122,7 +122,7 @@ void Monitor::run_multi_monitor() {
             string body = json_build_stock_check(Config::TICKET_ID, target.sku_id, target.screen_id);
             multi.add_post((int)i, stock_url, body, Config::HEADERS);
         }
-            request_count++;
+        request_count++;
         multi.perform();
         while (!multi.all_done()) {
             multi.wait(1);
@@ -185,8 +185,8 @@ void Monitor::run_multi_monitor() {
             const auto& target = Config::TARGETS[i];
             string body = json_build_stock_check(Config::TICKET_ID, target.sku_id, target.screen_id);
             multi.add_post((int)i, stock_url, body, Config::HEADERS);
-            request_count++;
         }
+        request_count++;
         multi.perform();
 
         bool changed = false;

@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2025
  */
 
-#define VERSION "3.0.1"
+#define VERSION "3.0.2"
 #define INIT_DELAY_SEC 1
 
 #include <iostream>
