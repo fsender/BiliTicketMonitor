@@ -58,7 +58,9 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           $v = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { "C:\vcpkg" }
-          & "$v\vcpkg" install curl:x64-windows-static
+          # 禁止 vcpkg 下载 cmake（使用 runner 自带的）
+          $env:VCPKG_MAX_CONCURRENCY = $env:NUMBER_OF_PROCESSORS
+          & "$v\vcpkg" install curl:x64-windows-static --no-downloads
           echo "VCPKG_ROOT=$v" >> $env:GITHUB_ENV
 
       - name: Configure
