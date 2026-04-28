@@ -113,7 +113,7 @@ void Monitor::run_multi_monitor() {
     const string stock_url = "https://show.bilibili.com/api/ticket/stock/check";
     vector<pair<string, int>> current_status;
     current_status.resize(num_targets);
-    HttpMulti multi;  // 跨周期复用的 multi handle, TCP 连接不被重置
+    HttpMulti multi;  // 跨周期复用连接
 
     // 首次查询所有目标获取初始状态
     {
@@ -122,7 +122,6 @@ void Monitor::run_multi_monitor() {
             string body = json_build_stock_check(Config::TICKET_ID, target.sku_id, target.screen_id);
             multi.add_post((int)i, stock_url, body, Config::HEADERS);
         }
-        request_count++;
         multi.perform();
         while (!multi.all_done()) {
             multi.wait(1);
@@ -133,8 +132,6 @@ void Monitor::run_multi_monitor() {
                     ? parse_stock_status(req->response.data) : -1;
                 current_status[idx] = {Config::TARGETS[idx].label, code};
                 last_stock_status[Config::TARGETS[idx].screen_id] = code;
-                
-                // 初始轮询时如有库存也触发脚本/提示
                 if (code == 3 && monitored_flags[idx]) {
                     if (!target_scripts[idx].empty()) {
                         string cmd = replace_vars(target_scripts[idx], Config::TARGETS[idx].screen_id, Config::TARGETS[idx].sku_id);
@@ -151,12 +148,10 @@ void Monitor::run_multi_monitor() {
     // 表格渲染函数
     auto render_table = [&]() {
         size_t max_label_width = 0;
-        for (const auto& [label, code] : current_status) {
+        for (const auto& [label, code] : current_status)
             if (label.size() > max_label_width) max_label_width = label.size();
-        }
         size_t col_gap = 4 + max_label_width;
         last_status_col = col_gap;
-
         string title = Config::project_name.empty()
             ? format("B站票务监控器 - {} 个目标", num_targets)
             : format("\033[35m{} (\033[33m{}\033[35m) -", Config::project_name, num_targets);
@@ -173,47 +168,36 @@ void Monitor::run_multi_monitor() {
                 cout << format("\033[33m[{:>2}]\033[0m  ", i + 1) << label;
             cout << "\033[" << col_gap << "G" << color << text << "\033[0m" << endl;
         }
-        cout  << endl;
+        cout << endl;
     };
 
-    // 初始渲染
     render_table();
 
+    // 主循环: 使用 HttpMulti 复用连接 + 高效事件循环
     while (!stop) {
-        multi.reuse();  // 重置请求状态，保留 TCP 连接
+        multi.reuse();
         for (size_t i = 0; i < num_targets; i++) {
             const auto& target = Config::TARGETS[i];
             string body = json_build_stock_check(Config::TICKET_ID, target.sku_id, target.screen_id);
             multi.add_post((int)i, stock_url, body, Config::HEADERS);
+            request_count++;
         }
-        request_count++;
         multi.perform();
 
         bool changed = false;
-        auto cycle_start = chrono::steady_clock::now();
         while (!multi.all_done() && !stop) {
-            // 防止单次循环卡死: 超过 Config::TIMEOUT 毫秒强制退出
-            if (chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - cycle_start).count() > Config::TIMEOUT) {
-                cout << "\033[33m[警告] 单次轮询超时(" << Config::TIMEOUT << "ms)，强制进入下一周期\033[0m" << endl;
-                break;
-            }
-            multi.wait(1);
-            multi.perform();
             for (auto* req : multi.get_completed()) {
                 int idx = req->target_idx;
                 int code = (req->response.status_code == 200)
                     ? parse_stock_status(req->response.data) : -1;
                 const auto& target = Config::TARGETS[idx];
                 auto& last = last_stock_status[target.screen_id];
-
                 if (code != -1 && code != last) {
                     last = code;
                     current_status[idx].second = code;
                     changed = true;
                     healthy = true;
                 }
-                
-                // 有库存时执行自定义脚本或显示提示 (仅对已订阅的票种)
                 if (code == 3 && monitored_flags[idx]) {
                     if (!target_scripts[idx].empty()) {
                         string cmd = replace_vars(target_scripts[idx], target.screen_id, target.sku_id);
@@ -223,29 +207,27 @@ void Monitor::run_multi_monitor() {
                         cout << "\033[32m" << target.label << " 您订阅的票种有票了!\033[0m" << endl;
                     }
                 }
-
-                // Bark推送通知 (仅对已订阅的票种)
                 string label_copy = target.label;
                 if (monitored_flags[idx] && code == 3) {
-                    BarkClient::send("有库存 - " + label_copy,
-                        "项目ID: " + Config::TICKET_ID, true);
+                    BarkClient::send("有库存 - " + label_copy, "项目ID: " + Config::TICKET_ID, true);
                 } else if (code == 1) {
-                    BarkClient::send("暂时售罄 - " + label_copy,
-                        "项目ID: " + Config::TICKET_ID, false);
+                    BarkClient::send("暂时售罄 - " + label_copy, "项目ID: " + Config::TICKET_ID, false);
                 }
             }
+            // 等待新数据到达 (阻塞，零CPU开销)
+            multi.wait(50);
+            multi.perform();
         }
 
         if (changed) {
-            //clear_screen();
             cout << "\033[33m监控ID: " << Config::TICKET_ID
                  << " | 刷新间隔: " << Config::REFRESH_INTERVAL << "ms\033[0m\n";
             cout << "===============================================================\033[0m" << "\n";
             render_table();
         }
-        // 显示当前时间状态行
         cout << "\033[32m当前时间: " << get_ms_timestamp() << " | 已发送: " << request_count << " 次\033[0m        \r" << flush;
 
-        this_thread::sleep_for(chrono::milliseconds(Config::REFRESH_INTERVAL));
+        if (Config::REFRESH_INTERVAL)
+            this_thread::sleep_for(chrono::milliseconds(Config::REFRESH_INTERVAL));
     }
 }
