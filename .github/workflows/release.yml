@@ -15,89 +15,75 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    container: ${{ matrix.container }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: Linux x86_64
             runner: ubuntu-24.04
-            container: amd64/alpine:latest
             artifact: BiliTicketMonitor-linux-x86_64
+            docker: amd64/alpine:latest
             binary: build/bin/BiliTicketMonitor
 
           - name: Linux ARM64
             runner: ubuntu-24.04-arm
-            container: arm64v8/alpine:latest
             artifact: BiliTicketMonitor-linux-arm64
+            docker: arm64v8/alpine:latest
             binary: build/bin/BiliTicketMonitor
 
           - name: macOS Apple Silicon
             runner: macos-14
-            container: null
             artifact: BiliTicketMonitor-macos-arm64
             binary: build/bin/BiliTicketMonitor
 
           - name: Windows x86_64
             runner: windows-2022
-            container: null
             artifact: BiliTicketMonitor-win-x86_64.exe
             binary: build/bin/Release/BiliTicketMonitor.exe
 
     steps:
       - uses: actions/checkout@v4
 
-      # === 全静态构建 (Alpine Linux — musl) ===
-      - name: Build (Alpine static)
-        if: matrix.container
+      # === Linux (全静态 Alpine musl) ===
+      - name: Build (Linux static)
+        if: matrix.docker
         run: |
-          apk add --no-cache curl-dev curl-static cmake g++ build-base linux-headers \
-            openssl-libs-static nghttp2-static nghttp3-static zlib-static brotli-static zstd-static \
-            libidn2-static libpsl-static libunistring-static c-ares-dev
-          cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON
-          cmake --build build
-          build/bin/BiliTicketMonitor --version
+          docker run --rm -v $PWD:/src -w /src ${{ matrix.docker }} sh -c "
+            apk add --no-cache curl-dev curl-static cmake g++ build-base linux-headers \
+              openssl-libs-static nghttp2-static nghttp3-static zlib-static brotli-static \
+              zstd-static libidn2-static libpsl-static libunistring-static c-ares-dev
+            cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON
+            cmake --build build
+            build/bin/BiliTicketMonitor --version
+          "
 
-      # === macOS (动态链接系统库, macOS 标准做法) ===
-      - name: Install dependencies (macOS)
+      # === macOS ===
+      - name: Install deps (macOS)
         if: runner.os == 'macOS'
         run: brew install curl cmake
-
-      - name: Configure (macOS)
-        if: runner.os == 'macOS'
-        run: cmake -S src -B build -DCMAKE_BUILD_TYPE=Release
-
       - name: Build (macOS)
         if: runner.os == 'macOS'
-        run: cmake --build build
+        run: |
+          cmake -S src -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+          ${{ matrix.binary }} --version
 
-      - name: Smoke test (macOS)
-        if: runner.os == 'macOS'
-        run: ${{ matrix.binary }} --version
-
-      # === Windows (vcpkg 静态链接 curl) ===
-      - name: Install dependencies (Windows)
+      # === Windows (vcpkg static) ===
+      - name: Install deps (Windows)
         if: runner.os == 'Windows'
         run: |
-          $vcpkg = "$env:VCPKG_INSTALLATION_ROOT"
-          if (-not $vcpkg) { $vcpkg = "C:\vcpkg" }
-          & "$vcpkg\vcpkg" install curl:x64-windows
-          echo "VCPKG_ROOT=$vcpkg" >> $env:GITHUB_ENV
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        run: cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-
+          $v = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { "C:\vcpkg" }
+          & "$v\vcpkg" install curl:x64-windows
+          echo "VCPKG_ROOT=$v" >> $env:GITHUB_ENV
       - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: cmake --build build --config Release
+        run: |
+          cmake -S src -B build -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+          cmake --build build --config Release
+          ${{ matrix.binary }} --version
 
-      - name: Smoke test (Windows)
-        if: runner.os == 'Windows'
-        run: ${{ matrix.binary }} --version
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.binary }}
@@ -111,45 +97,26 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
-
-      - name: Prepare release files (rename with platform names)
+      - name: Prepare release
         run: |
           mkdir -p release_files
-          for dir in artifacts/*/; do
-            platform=$(basename "$dir")
-            platform_clean="${platform%.exe}"
-            for f in "$dir"*; do
-              ext=""
-              case "$platform" in
-                *win*) ext=".exe" ;;
-              esac
-              cp "$f" "release_files/${platform_clean}${ext}"
+          for d in artifacts/*/; do
+            p=$(basename "$d"); pc="${p%.exe}"
+            for f in "$d"*; do
+              ext=""; case "$p" in *win*) ext=".exe" ;; esac
+              cp "$f" "release_files/${pc}${ext}"
             done
           done
-          echo "=== Release files ==="
-          ls -lh release_files/
-
-      - name: Generate release notes
-        run: |
-          echo "## BiliTicketMonitor ${{ github.ref_name }}" > release-notes.md
-          echo "" >> release-notes.md
-          echo "### Downloads" >> release-notes.md
-          echo "" >> release-notes.md
+          echo "## BiliTicketMonitor ${{ github.ref_name }}" > notes.md
+          echo "" >> notes.md; echo "### Downloads" >> notes.md; echo "" >> notes.md
           for f in release_files/*; do
-            name=$(basename "$f")
-            size=$(ls -lh "$f" | awk '{print $5}')
-            echo "- \`$name\` ($size)" >> release-notes.md
+            echo "- \`$(basename $f)\` ($(ls -lh $f | awk '{print $5}'))" >> notes.md
           done
-          echo "" >> release-notes.md
-          cat CHANGELOG.md >> release-notes.md 2>/dev/null || true
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+          cat CHANGELOG.md >> notes.md 2>/dev/null || true
+      - uses: softprops/action-gh-release@v2
         with:
-          body_path: release-notes.md
+          body_path: notes.md
           files: release_files/*

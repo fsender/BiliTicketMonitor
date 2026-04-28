@@ -7,6 +7,25 @@ set(CMAKE_CXX_STANDARD 20)
 # 设置可执行文件输出目录
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+# ==================== 跨平台编译配置 ====================
+# 必须在 find_package(CURL) 之前执行，确保静态模式下优先使用 .a 文件
+
+option(STATIC_BUILD "Build fully static binary" OFF)
+if(STATIC_BUILD)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .a .lib)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
+    message(STATUS "Build mode: FULL STATIC")
+    # musl 工具链检测 (Alpine Linux)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER MATCHES "musl")
+        message(STATUS "Musl toolchain detected")
+    endif()
+else()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+    endif()
+    message(STATUS "Build mode: SEMI-STATIC")
+endif()
+
 # 添加可执行文件
 add_executable(BiliTicketMonitor
     main.cpp
@@ -15,7 +34,7 @@ add_executable(BiliTicketMonitor
     simdjson.cpp
 )
 
-# 查找libcurl包
+# 查找libcurl包 (STATIC_BUILD模式下会优先找 .a 文件)
 find_package(CURL REQUIRED)
 
 # 包含头文件目录
@@ -24,7 +43,7 @@ target_include_directories(BiliTicketMonitor PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# 链接库 (优先使用 pkg-config 获取完整依赖链)
+# 链接库
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND AND STATIC_BUILD)
     # 静态构建: 用 pkg-config 获取 curl 的所有依赖
@@ -35,10 +54,25 @@ if(PkgConfig_FOUND AND STATIC_BUILD)
         )
         message(STATUS "Static curl libs: ${CURL_STATIC_STATIC_LIBRARIES}")
     else()
-        target_link_libraries(BiliTicketMonitor PRIVATE
-            ${CURL_LIBRARIES}
-        )
+        target_link_libraries(BiliTicketMonitor PRIVATE ${CURL_LIBRARIES})
     endif()
+else()
+    target_link_libraries(BiliTicketMonitor PRIVATE ${CURL_LIBRARIES})
+endif()
+
+# 平台特定设置
+if(WIN32)
+    target_link_libraries(BiliTicketMonitor PRIVATE ws2_32 wininet)
+endif()
+if(STATIC_BUILD)
+    target_compile_definitions(BiliTicketMonitor PRIVATE CURL_STATICLIB=1)
+endif()
+if(WIN32)
+    target_compile_definitions(BiliTicketMonitor PRIVATE _HAS_STD_BYTE=0)
+endif()
+if(NOT WIN32 AND NOT STATIC_BUILD)
+    target_link_libraries(BiliTicketMonitor PRIVATE pthread)
+endif()
 else()
     target_link_libraries(BiliTicketMonitor PRIVATE
         ${CURL_LIBRARIES}
