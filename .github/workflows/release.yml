@@ -40,7 +40,7 @@ jobs:
           - name: Windows x86_64
             runner: windows-2022
             artifact: BiliTicketMonitor-win-x86_64.exe
-            cmake: -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+            cmake: -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON -DVCPKG_TARGET_TRIPLET=x64-windows-static -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
             binary: build/bin/Release/BiliTicketMonitor.exe
 
     steps:
