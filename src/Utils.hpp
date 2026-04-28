@@ -34,7 +34,7 @@ inline void clear_screen() {
     system("chcp 65001");
     system("cls");
 #else
-    system("clear");
+    //system("clear");
 #endif
 }
 
