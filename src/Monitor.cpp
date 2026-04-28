@@ -122,7 +122,7 @@ void Monitor::run_multi_monitor() {
             string body = json_build_stock_check(Config::TICKET_ID, target.sku_id, target.screen_id);
             multi.add_post((int)i, stock_url, body, Config::HEADERS);
         }
-        request_count++;
+            request_count++;
         multi.perform();
         while (!multi.all_done()) {
             multi.wait(1);
@@ -135,7 +135,7 @@ void Monitor::run_multi_monitor() {
                 last_stock_status[Config::TARGETS[idx].screen_id] = code;
                 
                 // 初始轮询时如有库存也触发脚本/提示
-                if (code == 3) {
+                if (code == 3 && monitored_flags[idx]) {
                     if (!target_scripts[idx].empty()) {
                         string cmd = replace_vars(target_scripts[idx], Config::TARGETS[idx].screen_id, Config::TARGETS[idx].sku_id);
                         cout << "\033[32m执行: " << cmd << "\033[0m" << endl;
@@ -213,8 +213,8 @@ void Monitor::run_multi_monitor() {
                     healthy = true;
                 }
                 
-                // 有库存时执行自定义脚本或显示提示 (每次检测到都触发, 匹配原版行为)
-                if (code == 3) {
+                // 有库存时执行自定义脚本或显示提示 (仅对已订阅的票种)
+                if (code == 3 && monitored_flags[idx]) {
                     if (!target_scripts[idx].empty()) {
                         string cmd = replace_vars(target_scripts[idx], target.screen_id, target.sku_id);
                         cout << "\033[32m执行: " << cmd << "\033[0m" << endl;
@@ -224,9 +224,9 @@ void Monitor::run_multi_monitor() {
                     }
                 }
 
-                // Bark推送通知
+                // Bark推送通知 (仅对已订阅的票种)
                 string label_copy = target.label;
-                if (code == 3) {
+                if (monitored_flags[idx] && code == 3) {
                     BarkClient::send("有库存 - " + label_copy,
                         "项目ID: " + Config::TICKET_ID, true);
                 } else if (code == 1) {

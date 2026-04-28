@@ -43,6 +43,7 @@
 !.github/
 
 build
+build-static
 release
 config.txt
 test_grab/out*.txt
