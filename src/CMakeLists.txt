@@ -24,10 +24,26 @@ target_include_directories(BiliTicketMonitor PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# 链接库
-target_link_libraries(BiliTicketMonitor PRIVATE
-    ${CURL_LIBRARIES}
-)
+# 链接库 (优先使用 pkg-config 获取完整依赖链)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND AND STATIC_BUILD)
+    # 静态构建: 用 pkg-config 获取 curl 的所有依赖
+    pkg_check_modules(CURL_STATIC libcurl)
+    if(CURL_STATIC_FOUND)
+        target_link_libraries(BiliTicketMonitor PRIVATE
+            ${CURL_STATIC_STATIC_LIBRARIES}
+        )
+        message(STATUS "Static curl libs: ${CURL_STATIC_STATIC_LIBRARIES}")
+    else()
+        target_link_libraries(BiliTicketMonitor PRIVATE
+            ${CURL_LIBRARIES}
+        )
+    endif()
+else()
+    target_link_libraries(BiliTicketMonitor PRIVATE
+        ${CURL_LIBRARIES}
+    )
+endif()
 
 # ==================== 跨平台编译配置 ====================
 
