@@ -22,66 +22,58 @@ jobs:
           - name: Linux x86_64
             runner: ubuntu-24.04
             artifact: BiliTicketMonitor-linux-x86_64
-            docker: amd64/alpine:latest
+            cmake: -DCMAKE_BUILD_TYPE=Release
             binary: build/bin/BiliTicketMonitor
 
           - name: Linux ARM64
             runner: ubuntu-24.04-arm
             artifact: BiliTicketMonitor-linux-arm64
-            docker: arm64v8/alpine:latest
+            cmake: -DCMAKE_BUILD_TYPE=Release
             binary: build/bin/BiliTicketMonitor
 
           - name: macOS Apple Silicon
             runner: macos-14
             artifact: BiliTicketMonitor-macos-arm64
+            cmake: -DCMAKE_BUILD_TYPE=Release
             binary: build/bin/BiliTicketMonitor
 
           - name: Windows x86_64
             runner: windows-2022
             artifact: BiliTicketMonitor-win-x86_64.exe
+            cmake: -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
             binary: build/bin/Release/BiliTicketMonitor.exe
 
     steps:
       - uses: actions/checkout@v4
 
-      # === Linux (全静态 Alpine musl) ===
-      - name: Build (Linux static)
-        if: matrix.docker
-        run: |
-          docker run --rm -v $PWD:/src -w /src ${{ matrix.docker }} sh -c "
-            apk add --no-cache curl-dev curl-static cmake g++ build-base linux-headers \
-              openssl-libs-static nghttp2-static nghttp3-static zlib-static brotli-static \
-              zstd-static libidn2-static libpsl-static libunistring-static c-ares-dev
-            cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DSTATIC_BUILD=ON
-            cmake --build build
-            build/bin/BiliTicketMonitor --version
-          "
+      - name: Install deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libcurl4-openssl-dev cmake g++
 
-      # === macOS ===
       - name: Install deps (macOS)
         if: runner.os == 'macOS'
         run: brew install curl cmake
-      - name: Build (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          cmake -S src -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build
-          ${{ matrix.binary }} --version
 
-      # === Windows (vcpkg static) ===
       - name: Install deps (Windows)
         if: runner.os == 'Windows'
         run: |
           $v = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { "C:\vcpkg" }
           & "$v\vcpkg" install curl:x64-windows
           echo "VCPKG_ROOT=$v" >> $env:GITHUB_ENV
-      - name: Build (Windows)
+
+      - name: Configure
+        run: cmake -S src -B build ${{ matrix.cmake }}
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Smoke test (Unix)
+        if: runner.os != 'Windows'
+        run: ${{ matrix.binary }} --version
+
+      - name: Smoke test (Windows)
         if: runner.os == 'Windows'
-        run: |
-          cmake -S src -B build -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
-          cmake --build build --config Release
-          ${{ matrix.binary }} --version
+        run: ${{ matrix.binary }} --version
 
       - uses: actions/upload-artifact@v4
         with:
@@ -105,16 +97,14 @@ jobs:
           mkdir -p release_files
           for d in artifacts/*/; do
             p=$(basename "$d"); pc="${p%.exe}"
-            for f in "$d"*; do
-              ext=""; case "$p" in *win*) ext=".exe" ;; esac
-              cp "$f" "release_files/${pc}${ext}"
-            done
+            ext=""; case "$p" in *win*) ext=".exe" ;; esac
+            cp "$d"/* "release_files/${pc}${ext}"
           done
           echo "## BiliTicketMonitor ${{ github.ref_name }}" > notes.md
-          echo "" >> notes.md; echo "### Downloads" >> notes.md; echo "" >> notes.md
-          for f in release_files/*; do
-            echo "- \`$(basename $f)\` ($(ls -lh $f | awk '{print $5}'))" >> notes.md
-          done
+          echo "" >> notes.md
+          echo "### Downloads" >> notes.md
+          echo "" >> notes.md
+          for f in release_files/*; do echo "- \`$(basename $f)\` ($(ls -lh $f | awk '{print $5}'))" >> notes.md; done
           cat CHANGELOG.md >> notes.md 2>/dev/null || true
       - uses: softprops/action-gh-release@v2
         with:
