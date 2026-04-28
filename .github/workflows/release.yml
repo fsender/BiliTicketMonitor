@@ -115,7 +115,9 @@ jobs:
             openssl-libs-static nghttp2-static zlib-static brotli-static zstd-static
           cmake -S src -B build -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXE_LINKER_FLAGS="-static" \
-            -DCURL_USE_STATIC_LIBS=ON
+            -DCURL_USE_STATIC_LIBS=ON \
+            -DCURL_LIBRARY=/usr/lib/libcurl.a \
+            -DCURL_INCLUDE_DIR=/usr/include
 
       - name: Build
         run: cmake --build build
