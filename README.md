@@ -1,4 +1,4 @@
-# B站票务监控器 3.1.0  By FriendshipEnder
+# B站票务监控器 3.1.1  By FriendshipEnder
 
 A Bilibili Ticket Monitor use C++20. Extendable. Multi-platform.
 
@@ -165,4 +165,4 @@ cmake --build build
 
 ----
 
-B站票务监控器 3.0.0 By FriendshipEnder
+B站票务监控器 3.1.1 By FriendshipEnder

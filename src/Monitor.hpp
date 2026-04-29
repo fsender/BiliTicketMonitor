@@ -35,4 +35,5 @@ public:
 private:
     void run_multi_monitor();
     void handle_error(const string& msg, bool critical);
+    void system_call(const string& cmd);
 };

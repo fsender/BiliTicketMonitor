@@ -2,13 +2,12 @@
  * @file main.cpp
  * @author FriendshipEnder (https://space.bilibili.com/180327370)
  * @brief B站票务监控器
- * @version 3.1.0
  * @date 2025-07-01
  * @date 2026-04-28
  * @copyright Copyright (c) 2025
  */
 
-#define VERSION "3.1.0"
+#define VERSION "3.1.1"
 #define INIT_DELAY_SEC 1
 
 #include <iostream>
@@ -44,7 +43,7 @@ const char *welcome =
 ":\033[31m        |___|___| \\___/ |__|__||____|  |__|   \\___/ |__|\\_|       \033[0m:\n"
 "····································································\n"
 "\033[36mB站票务监控器：By FriendshipEnder V " VERSION "\033[0m\n"
-"\033[32m3.1.0 版本说明：并行请求架构, 更快请求, 更高性能!!\033[0m\n"
+"\033[32m" VERSION " 版本说明：并行请求架构, 更快请求, 更高性能!!\033[0m\n"
 "\033[32m3.0.0 版本说明：新API, 降低风控风险!! 支持监视多个票种并单独配置自定义命令行抢票功能!!\033[0m\n"
 "建议通过 \"在终端中打开\" 打开本程序, 然后运行时在后面加上 -h 参数看说明!\n"
 "\033[33m汐❗加❗加❗编❗写❗, 性❗能❗更❗强❗大❗\033[0m\n"

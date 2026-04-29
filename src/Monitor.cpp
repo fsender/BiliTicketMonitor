@@ -84,13 +84,13 @@ void Monitor::start() {
             }
         }
     } else {
-        // 仅监控选定的票种 (不高亮, 因为全都是)
+        // 仅监控选定的票种 (无高亮, 但脚本和通知正常工作)
         for (const auto& mt : Config::MONITORED) {
             int idx = mt.ticket_no - 1;
             if (idx >= 0 && idx < (int)all_tickets.size()) {
                 Config::TARGETS.push_back(all_tickets[idx]);
                 target_scripts.push_back(mt.script_command);
-                monitored_flags.push_back(false); // 不高亮
+                monitored_flags.push_back(true);  // 选中的目标触发脚本/通知
             }
         }
         if (Config::TARGETS.empty()) {
@@ -107,7 +107,16 @@ void Monitor::handle_error(const string& msg, bool critical) {
     healthy = false;
     if (critical) stop = true;
 }
-
+void Monitor::system_call(const string& cmd){
+    cout << "\033[34m执行: " << cmd << "\033[0m" << endl;
+    int system_call_res = system(cmd.c_str());
+    if(system_call_res == 0){
+        cout << "\033[32m😄😄😄恭喜, 抢票成功!😄😄😄\033[0m" << endl;
+    }
+    else{
+        cout << "\033[31m😭😭😭抢票任务执行失败! 返回值: " << system_call_res << "😭😭😭\033[0m" << endl;
+    }
+}
 void Monitor::run_multi_monitor() {
     size_t num_targets = Config::TARGETS.size();
     const string stock_url = "https://show.bilibili.com/api/ticket/stock/check";
@@ -135,8 +144,7 @@ void Monitor::run_multi_monitor() {
                 if (code == 3 && monitored_flags[idx]) {
                     if (!target_scripts[idx].empty()) {
                         string cmd = replace_vars(target_scripts[idx], Config::TARGETS[idx].screen_id, Config::TARGETS[idx].sku_id);
-                        cout << "\033[32m执行: " << cmd << "\033[0m" << endl;
-                        system(cmd.c_str());
+                        system_call(cmd);
                     } else {
                         cout << "\033[32m" << Config::TARGETS[idx].label << " 您关注的票档有票了!\033[0m" << endl;
                     }
@@ -190,11 +198,22 @@ void Monitor::run_multi_monitor() {
 
         bool changed = false;
         int max_lat_us = 0;
+        auto cycle_start = chrono::steady_clock::now();
         while (!multi.all_done() && !stop) {
+            // 周期超时: 防止单次循环被某个挂起请求卡死
+            if (chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - cycle_start).count() > Config::TIMEOUT) {
+                handle_error("轮询超时，强制进入下一周期", false);
+                break;
+            }
             for (auto* req : multi.get_completed()) {
                 auto lat = (int)chrono::duration_cast<chrono::microseconds>(chrono::steady_clock::now() - req->submit_time).count();
                 if (lat > max_lat_us) max_lat_us = lat;
                 int idx = req->target_idx;
+                // 检测风控 (412)
+                if (req->response.status_code == 412) {
+                    handle_error("触发风控(412)！", true);
+                    break;
+                }
                 int code = (req->response.status_code == 200)
                     ? parse_stock_status(req->response.data) : -1;
                 const auto& target = Config::TARGETS[idx];
@@ -208,8 +227,9 @@ void Monitor::run_multi_monitor() {
                 if (code == 3 && monitored_flags[idx]) {
                     if (!target_scripts[idx].empty()) {
                         string cmd = replace_vars(target_scripts[idx], target.screen_id, target.sku_id);
-                        cout << "\033[32m执行: " << cmd << "\033[0m" << endl;
-                        thread([cmd]() { system(cmd.c_str()); }).detach();
+                        //cout << "\033[32m执行: " << cmd << "\033[0m" << endl;
+                        //thread([cmd]() { system(cmd.c_str()); }).detach();
+                        system_call(cmd);
                     } else {
                         cout << "\033[32m" << target.label << " 您订阅的票种有票了!\033[0m" << endl;
                     }
